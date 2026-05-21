@@ -3,6 +3,9 @@ import type { StatusResult, Branch, CommitInfo } from "../types/git";
 import * as api from "../services/api";
 import { saveRecentRepo } from "../utils/recentRepos";
 
+// Module-level guard prevents concurrent sync operations
+let _syncInFlight = false;
+
 function rememberRecentRepo(path: string) {
   try {
     const next = saveRecentRepo(path);
@@ -42,13 +45,12 @@ interface RepoStore {
 }
 
 export const useRepoStore = create<RepoStore>((set, get) => {
-  let syncInFlight = false;
 
   async function syncRepo(showLoading: boolean) {
     const { repoPath } = get();
-    if (!repoPath || syncInFlight) return;
+    if (!repoPath || _syncInFlight) return;
 
-    syncInFlight = true;
+    _syncInFlight = true;
     if (showLoading) set({ loading: true, error: null });
     try {
       const [statusResult, branchesResult, logResult] = await Promise.allSettled([
@@ -91,7 +93,7 @@ export const useRepoStore = create<RepoStore>((set, get) => {
       const message = err instanceof Error ? err.message : String(err);
       set({ error: message });
     } finally {
-      syncInFlight = false;
+      _syncInFlight = false;
       if (showLoading) set({ loading: false });
     }
   }

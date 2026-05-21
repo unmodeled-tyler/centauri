@@ -5,6 +5,42 @@ import { resolve, sep } from "path";
 
 const execFileAsync = promisify(execFile);
 
+// ── Retry with backoff ─────────────────────────────────────────────────────────
+
+interface RetryOptions {
+  retries?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+  retryOnExitCode?: number[];
+}
+
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: RetryOptions = {},
+): Promise<T> {
+  const { retries = 2, baseDelayMs = 100, maxDelayMs = 2000, retryOnExitCode = [] } = options;
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      const isRetryable =
+        err instanceof Error &&
+        (err.message.includes("file locked") ||
+          err.message.includes("Permission denied") ||
+          err.message.includes("unable to index") ||
+          err.message.includes("objects")) ||
+        retryOnExitCode.length > 0;
+
+      if (attempt >= retries || !isRetryable) throw err;
+
+      const delay = Math.min(baseDelayMs * 2 ** attempt, maxDelayMs);
+      attempt++;
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+}
+
 export function expandPath(p: string): string {
   if (p === "~") {
     return homedir();
@@ -36,55 +72,57 @@ export async function git(
 
   const resolvedCwd = cwd ? expandPath(cwd) : undefined;
 
-  if (input) {
-    return new Promise((resolve, reject) => {
-      const child = spawn("git", args, {
-        cwd: resolvedCwd,
-        env: { ...process.env, ...env } as any,
+  return withRetry(async () => {
+    if (input) {
+      return new Promise<GitExecResult>((resolve, reject) => {
+        const child = spawn("git", args, {
+          cwd: resolvedCwd,
+          env: { ...process.env, ...env } as Record<string, string>,
+        });
+
+        let stdout = "";
+        let stderr = "";
+
+        child.stdout.setEncoding("utf-8");
+        child.stderr.setEncoding("utf-8");
+        child.stdout.on("data", (data) => { stdout += data; });
+        child.stderr.on("data", (data) => { stderr += data; });
+
+        child.on("error", (err: unknown) => {
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+            reject(new Error("git is not installed or not in PATH"));
+          } else {
+            reject(new Error((err as Error).message || String(err)));
+          }
+        });
+
+        child.on("close", (code) => {
+          resolve({ stdout, stderr, exitCode: code ?? 0 });
+        });
+
+        child.stdin.end(input);
       });
-
-      let stdout = "";
-      let stderr = "";
-
-      child.stdout.setEncoding("utf-8");
-      child.stderr.setEncoding("utf-8");
-      child.stdout.on("data", (data) => { stdout += data; });
-      child.stderr.on("data", (data) => { stderr += data; });
-
-      child.on("error", (err: any) => {
-        if (err.code === "ENOENT") {
-          reject(new Error("git is not installed or not in PATH"));
-        } else {
-          reject(new Error(err.message || String(err)));
-        }
-      });
-
-      child.on("close", (code) => {
-        resolve({ stdout, stderr, exitCode: code ?? 0 });
-      });
-
-      child.stdin.end(input);      
-    });
-  }
-
-  try {
-    const { stdout, stderr } = await execFileAsync("git", args, {
-      cwd: resolvedCwd,
-      env: { ...process.env, ...env },
-      maxBuffer,
-      encoding: "utf-8",
-    });
-    return { stdout: stdout || "", stderr: stderr || "", exitCode: 0 };
-  } catch (err: any) {
-    if (err.code === "ENOENT") {
-      throw new Error("git is not installed or not in PATH");
     }
-    return {
-      stdout: err.stdout || "",
-      stderr: err.stderr || err.message || "",
-      exitCode: err.status ?? 1,
-    };
-  }
+
+    try {
+      const { stdout, stderr } = await execFileAsync("git", args, {
+        cwd: resolvedCwd,
+        env: { ...process.env, ...env },
+        maxBuffer,
+        encoding: "utf-8",
+      });
+      return { stdout: stdout || "", stderr: stderr || "", exitCode: 0 };
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error("git is not installed or not in PATH");
+      }
+      return {
+        stdout: (err as { stdout?: string }).stdout || "",
+        stderr: (err as { stderr?: string }).stderr || (err as Error).message || "",
+        exitCode: (err as { status?: number }).status ?? 1,
+      };
+    }
+  }, { retries: 2, baseDelayMs: 100 });
 }
 
 export async function gitInRepo(

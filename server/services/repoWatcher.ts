@@ -80,6 +80,13 @@ class RepoWatcherInstance {
 
 const WATCHER_MAP = new Map<string, RepoWatcherInstance>();
 
+export function shutdownAllWatchers(): void {
+  for (const [path, watcher] of WATCHER_MAP) {
+    watcher.stop();
+    WATCHER_MAP.delete(path);
+  }
+}
+
 const IGNORED_SEGMENTS = new Set([
   ".cache",
   ".git",
