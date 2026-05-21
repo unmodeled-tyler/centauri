@@ -192,7 +192,11 @@ router.get("/pickaxe", async (req, res, next) => {
   try {
     const repoPath = req.query.repo as string;
     const query = req.query.query as string;
-    const mode = (req.query.mode as string) === "G" ? "G" : "S";
+    const rawMode = req.query.mode as string;
+    if (rawMode !== "G" && rawMode !== "S") {
+      return res.status(400).json({ error: "mode must be 'G' or 'S'" });
+    }
+    const mode = rawMode;
     if (!repoPath || !query) {
       return res.status(400).json({ error: "repo and query required" });
     }

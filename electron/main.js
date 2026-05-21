@@ -95,15 +95,15 @@ function registerLifecycle() {
   });
 
   // Secure API key storage using Electron's safeStorage
-  ipcMain.handle("store-api-key", (_event, encrypted) => {
+  ipcMain.handle("store-api-key", (_event, plaintext) => {
     if (!safeStorage.isEncryptionAvailable()) return;
     app.setLoginItemSettings({ openAtLogin: false });
-    // We store as a simple encrypted string in app.getPath('userData')
     const { writeFileSync } = require("fs");
     const { join } = require("path");
     const keyPath = join(app.getPath("userData"), "quanta-ai-key");
     try {
-      writeFileSync(keyPath, encrypted, "utf-8");
+      const encrypted = safeStorage.encryptString(plaintext);
+      writeFileSync(keyPath, encrypted.toString("base64"), "utf-8");
     } catch {
       // ignored
     }

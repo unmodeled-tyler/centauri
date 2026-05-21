@@ -37,51 +37,91 @@ const DEFAULTS: AppSettings = {
 };
 
 const SETTINGS_KEY = "quanta-settings";
-// API key stored separately from general settings so it's easier to audit
-// and clear independently. Still plaintext in localStorage — Electron apps
-// should prefer safeStorage via IPC when available.
 const API_KEY_KEY = "quanta-ai-api-key";
 
-function loadSettings(): AppSettings {
+const hasElectronAPI = typeof window !== "undefined" && !!window.electronAPI;
+
+async function loadApiKey(): Promise<string> {
+  if (hasElectronAPI) {
+    try {
+      return await window.electronAPI!.loadApiKey();
+    } catch {
+      return "";
+    }
+  }
+  if (typeof localStorage !== "undefined") {
+    return localStorage.getItem(API_KEY_KEY) ?? "";
+  }
+  return "";
+}
+
+async function storeApiKey(key: string): Promise<void> {
+  if (hasElectronAPI) {
+    try {
+      await window.electronAPI!.storeApiKey(key);
+    } catch {
+      // ignored
+    }
+  }
+}
+
+async function clearApiKey(): Promise<void> {
+  if (hasElectronAPI) {
+    try {
+      await window.electronAPI!.clearApiKey();
+    } catch {
+      // ignored
+    }
+  }
+}
+
+async function loadSettings(): Promise<AppSettings> {
   try {
     const stored = localStorage.getItem(SETTINGS_KEY);
     const base = stored ? { ...DEFAULTS, ...JSON.parse(stored) } : { ...DEFAULTS };
-    const apiKey = localStorage.getItem(API_KEY_KEY);
+    const apiKey = await loadApiKey();
     if (apiKey) base.aiCommitApiKey = apiKey;
     return base;
   } catch {}
   return { ...DEFAULTS };
 }
 
-function saveSettings(settings: AppSettings) {
+async function saveSettings(settings: AppSettings): Promise<void> {
   const { aiCommitApiKey, ...rest } = settings;
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(rest));
   if (aiCommitApiKey) {
-    localStorage.setItem(API_KEY_KEY, aiCommitApiKey);
+    await storeApiKey(aiCommitApiKey);
   } else {
-    localStorage.removeItem(API_KEY_KEY);
+    await clearApiKey();
   }
 }
 
 interface SettingsStore {
   settings: AppSettings;
+  settingsLoaded: boolean;
   updateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
   resetSettings: () => void;
 }
 
 export const useSettingsStore = create<SettingsStore>((set) => ({
-  settings: loadSettings(),
+  settings: { ...DEFAULTS },
+  settingsLoaded: false,
 
   updateSetting: (key, value) =>
     set((state) => {
       const next = { ...state.settings, [key]: value };
-      saveSettings(next);
+      void saveSettings(next);
       return { settings: next };
     }),
 
   resetSettings: () =>
     set(() => {
-      saveSettings({ ...DEFAULTS });
+      void saveSettings({ ...DEFAULTS });
       return { settings: { ...DEFAULTS } };
     }),
 }));
+
+// Initialize settings asynchronously
+void loadSettings().then((loaded) => {
+  useSettingsStore.setState({ settings: loaded, settingsLoaded: true });
+});

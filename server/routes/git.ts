@@ -631,7 +631,8 @@ router.post("/rebase-interactive", async (req, res, next) => {
     const resolvedRepo = await validateGitRepo(repo);
 
     const workDir = join(tmpdir(), `quanta-rebase-${randomUUID()}`);
-    await mkdir(workDir, { recursive: true });
+    await mkdir(workDir, { recursive: true, mode: 0o700 });
+    await chmod(workDir, 0o700);
 
     try {
       const todoLines = todos.map((entry: { action: string; hash: string; message: string }) => {
@@ -640,7 +641,8 @@ router.post("/rebase-interactive", async (req, res, next) => {
       });
       const todoContent = todoLines.join("\n") + "\n";
       const todoPath = join(workDir, "git-rebase-todo");
-      await writeFile(todoPath, todoContent, "utf-8");
+      await writeFile(todoPath, todoContent, { mode: 0o600, encoding: "utf-8" });
+      await chmod(todoPath, 0o600);
 
       const rewordsToHandle = todos.filter((entry: { action: string; hash: string; message: string }) => entry.action === "reword");
       const env: Record<string, string> = {};
@@ -653,10 +655,10 @@ router.post("/rebase-interactive", async (req, res, next) => {
         for (let i = 0; i < rewordsToHandle.length; i++) {
           const entry = rewordsToHandle[i];
           const msg = rewordMessages[entry.hash] || entry.message;
-          await writeFile(join(rewordDir, `${i}.txt`), msg, "utf-8");
+          await writeFile(join(rewordDir, `${i}.txt`), msg, { mode: 0o600, encoding: "utf-8" });
         }
         const counterPath = join(workDir, "reword-index");
-        await writeFile(counterPath, "0", "utf-8");
+        await writeFile(counterPath, "0", { mode: 0o600, encoding: "utf-8" });
         const scriptLines = [
           "#!/bin/bash",
           `COMMIT_MSG_FILE="$1"`,

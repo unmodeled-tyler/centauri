@@ -83,6 +83,9 @@ function normalizeLabel(label: string | undefined): string {
 }
 
 async function runCypher(alias: string, query: string): Promise<Record<string, string>[]> {
+  if (!/^[a-zA-Z0-9._-]+$/.test(alias)) {
+    throw new Error("Invalid alias");
+  }
   const { stdout } = await execFileAsync(GITNEXUS_BIN, [...GITNEXUS_ARGS, "cypher", "-r", alias, query]);
   const parsed = JSON.parse(stdout);
   if (parsed.error) throw new Error(parsed.error);

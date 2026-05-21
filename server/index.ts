@@ -76,7 +76,7 @@ export function createApp() {
       }
     },
   }));
-  app.use(express.json());
+  app.use(express.json({ limit: "1mb" }));
 
   // Global rate limiting for all API routes
   const apiLimiter = rateLimit({
@@ -140,9 +140,22 @@ export function createApp() {
     res.json({ csrfToken });
   });
 
+  // Rate limit for SSE token generation
+  const SSE_TOKEN_RATE_LIMITS = new Map<string, { count: number; resetAt: number }>();
+
   app.get("/api/sse-token", (req, res) => {
     if (!isLocalRequest(req)) {
       return res.status(403).json({ error: "Forbidden" });
+    }
+    const key = req.ip || "unknown";
+    const now = Date.now();
+    const current = SSE_TOKEN_RATE_LIMITS.get(key);
+    if (!current || now > current.resetAt) {
+      SSE_TOKEN_RATE_LIMITS.set(key, { count: 1, resetAt: now + 60_000 });
+    } else if (current.count >= 10) {
+      return res.status(429).json({ error: "Too many SSE token requests, please try again later." });
+    } else {
+      current.count++;
     }
     res.json({ token: createSseToken() });
   });
