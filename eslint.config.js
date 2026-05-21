@@ -5,7 +5,7 @@ import reactRefresh from "eslint-plugin-react-refresh";
 
 export default tseslint.config(
   {
-    ignores: ["build/**", "dist/**", "node_modules/**", "electron/**"],
+    ignores: ["build/**", "dist/**", "node_modules/**", "electron/**", ".kilo/**", ".remember/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -28,6 +28,20 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
       "no-empty": ["error", { allowEmptyCatch: true }],
       "@typescript-eslint/no-explicit-any": "warn",
+    },
+  },
+  {
+    files: ["bin/**/*.js"],
+    languageOptions: {
+      globals: {
+        console: "readonly",
+        fetch: "readonly",
+        process: "readonly",
+        setTimeout: "readonly",
+      },
+    },
+    rules: {
+      "no-empty": ["error", { allowEmptyCatch: true }],
     },
   },
 );

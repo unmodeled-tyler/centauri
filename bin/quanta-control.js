@@ -148,7 +148,7 @@ process.env.HOST = host;
 process.env.QUANTA_CONTROL_CLI = "1";
 
 const { startServer } = await import(serverEntry);
-const { server, token } = await startServer({
+const { server } = await startServer({
   port: Number.parseInt(port, 10),
   host,
 });
@@ -159,7 +159,6 @@ const resolvedPort =
 const url = `http://${host}:${resolvedPort}`;
 
 console.log(`Quanta Control is running at ${url}`);
-console.log(`Auth token: ${token}`);
 
 if (shouldOpen) {
   const electronLaunched = !useBrowser && launchElectron(url);

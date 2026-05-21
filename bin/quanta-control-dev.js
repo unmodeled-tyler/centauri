@@ -178,7 +178,6 @@ const electron = spawn(
   [
     "electron",
     "./electron/main.js",
-    "--no-sandbox",
     `--url=${appUrl}`,
   ],
   {

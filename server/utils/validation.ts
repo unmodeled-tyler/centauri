@@ -1,3 +1,5 @@
+import { realpath } from "fs/promises";
+import { homedir } from "os";
 import { isGitRepo, expandPath } from "../services/gitExecutor.js";
 
 export function createHttpError(status: number, message: string) {
@@ -6,11 +8,20 @@ export function createHttpError(status: number, message: string) {
 
 export async function validateGitRepo(repoPath: string): Promise<string> {
   const resolved = expandPath(repoPath);
-  const valid = await isGitRepo(resolved);
+  const realResolved = await realpath(resolved).catch(() => resolved);
+  const home = homedir();
+  const realHome = await realpath(home).catch(() => home);
+
+  // Ensure resolved path stays within the user's home directory
+  if (!realResolved.startsWith(realHome)) {
+    throw createHttpError(403, "Access denied");
+  }
+
+  const valid = await isGitRepo(realResolved);
   if (!valid) {
     throw createHttpError(400, "Not a valid git repository");
   }
-  return resolved;
+  return realResolved;
 }
 
 export function assertSafeRef(value: string, label: string) {

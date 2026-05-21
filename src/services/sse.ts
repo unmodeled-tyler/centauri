@@ -44,13 +44,12 @@ export async function connectRepoEvents(repo: string, refresh: () => void) {
 }
 
 async function openConnection(repo: string, refresh: () => void) {
-  // Fetch auth token for SSE (EventSource doesn't support custom headers,
-  // so we pass the token as a query parameter for this endpoint only)
+  // Fetch a short-lived SSE token instead of leaking the auth token in the URL
   let tokenParam = "";
   try {
-    const res = await fetch("/api/health");
+    const res = await fetch("/api/sse-token");
     const data = await res.json();
-    if (data.token) tokenParam = `&token=${encodeURIComponent(data.token)}`;
+    if (data.token) tokenParam = `&sseToken=${encodeURIComponent(data.token)}`;
   } catch {}
 
   const source = new EventSource(

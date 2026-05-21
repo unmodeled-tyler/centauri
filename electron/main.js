@@ -8,6 +8,7 @@ import {
   ipcMain,
   globalShortcut,
   nativeImage,
+  safeStorage,
 } from "electron";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -91,6 +92,44 @@ function registerLifecycle() {
       title: payload.title,
       body: typeof payload.body === "string" ? payload.body : "",
     }).show();
+  });
+
+  // Secure API key storage using Electron's safeStorage
+  ipcMain.handle("store-api-key", (_event, encrypted) => {
+    if (!safeStorage.isEncryptionAvailable()) return;
+    app.setLoginItemSettings({ openAtLogin: false });
+    // We store as a simple encrypted string in app.getPath('userData')
+    const { writeFileSync } = require("fs");
+    const { join } = require("path");
+    const keyPath = join(app.getPath("userData"), "quanta-ai-key");
+    try {
+      writeFileSync(keyPath, encrypted, "utf-8");
+    } catch {
+      // ignored
+    }
+  });
+
+  ipcMain.handle("load-api-key", () => {
+    if (!safeStorage.isEncryptionAvailable()) return "";
+    const { readFileSync, existsSync } = require("fs");
+    const { join } = require("path");
+    const keyPath = join(app.getPath("userData"), "quanta-ai-key");
+    if (!existsSync(keyPath)) return "";
+    try {
+      const encrypted = readFileSync(keyPath, "utf-8");
+      return safeStorage.decryptString(Buffer.from(encrypted, "base64"));
+    } catch {
+      return "";
+    }
+  });
+
+  ipcMain.handle("clear-api-key", () => {
+    const { unlinkSync, existsSync } = require("fs");
+    const { join } = require("path");
+    const keyPath = join(app.getPath("userData"), "quanta-ai-key");
+    if (existsSync(keyPath)) {
+      try { unlinkSync(keyPath); } catch { /* ignored */ }
+    }
   });
 
   app.whenReady().then(() => {

@@ -1,4 +1,8 @@
 import { Router } from "express";
+import { lookup as dnsLookup } from "dns";
+import { isIPv4, isIPv6 } from "net";
+import { URL } from "url";
+import { promisify } from "util";
 import { gitInRepo } from "../services/gitExecutor.js";
 
 const router = Router();
@@ -7,8 +11,96 @@ const MAX_DIFF_CHARS = 12000;
 const MAX_DIFF_LINES_PER_FILE = 80;
 const AI_REQUEST_TIMEOUT_MS = 90000;
 
+const SECRET_PATTERNS = [
+  /password\s*[:=]\s*.+/gi,
+  /api[_-]?key\s*[:=]\s*.+/gi,
+  /secret\s*[:=]\s*.+/gi,
+  /token\s*[:=]\s*.+/gi,
+  /private[_-]?key\s*[:=]\s*.+/gi,
+  /aws_access_key_id\s*=\s*.+/gi,
+  /aws_secret_access_key\s*=\s*.+/gi,
+  /auth\s*[:=]\s*.+/gi,
+  /bearer\s+\S+/gi,
+  /\b(sk-[a-zA-Z0-9]{20,})\b/g,
+];
+
+function scrubSecrets(value: string): string {
+  let result = value;
+  for (const pattern of SECRET_PATTERNS) {
+    result = result.replace(pattern, (match) => {
+      const firstChar = match.charAt(0);
+      if (firstChar === "+" || firstChar === "-") {
+        return firstChar + "[REDACTED]";
+      }
+      return "[REDACTED]";
+    });
+  }
+  return result;
+}
+
 function createHttpError(status: number, message: string) {
   return Object.assign(new Error(message), { status });
+}
+
+function isPrivateIp(ip: string): boolean {
+  if (isIPv4(ip)) {
+    const parts = ip.split(".").map(Number);
+    const a = parts[0]!;
+    const b = parts[1]!;
+    // 127.0.0.0/8
+    if (a === 127) return true;
+    // 10.0.0.0/8
+    if (a === 10) return true;
+    // 172.16.0.0/12
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    // 192.168.0.0/16
+    if (a === 192 && b === 168) return true;
+    // 169.254.0.0/16 (link-local)
+    if (a === 169 && b === 254) return true;
+    return false;
+  }
+  if (isIPv6(ip)) {
+    const lower = ip.toLowerCase();
+    // ::1
+    if (lower === "::1" || lower.startsWith("::1")) return true;
+    // fc00::/7 (private)
+    if (lower.startsWith("fc") || lower.startsWith("fd")) return true;
+    // fe80::/10 (link-local)
+    if (lower.startsWith("fe8") || lower.startsWith("fe9") || lower.startsWith("fea") || lower.startsWith("feb")) return true;
+    return false;
+  }
+  return false;
+}
+
+async function validateEndpoint(endpoint: string) {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    throw createHttpError(400, "Invalid AI endpoint URL");
+  }
+
+  if (url.protocol !== "https:") {
+    throw createHttpError(400, "AI endpoint must use HTTPS");
+  }
+
+  const hostname = url.hostname;
+  const lookupAsync = promisify(dnsLookup);
+  try {
+    const addresses = await lookupAsync(hostname, { all: true });
+    for (const addr of addresses) {
+      if (isPrivateIp(addr.address)) {
+        throw createHttpError(403, "AI endpoint resolves to a private IP address");
+      }
+    }
+  } catch (err) {
+    if (err instanceof Error && "status" in err) throw err;
+    // If DNS lookup fails, we don't block; many local AI runners might not resolve.
+    // But we do block if it's an IP literal.
+    if (isPrivateIp(hostname)) {
+      throw createHttpError(403, "AI endpoint resolves to a private IP address");
+    }
+  }
 }
 
 function chatCompletionsUrlCandidates(endpoint: string) {
@@ -299,7 +391,7 @@ async function buildCommitMessageContext(repo: string) {
     untracked.stdout.trim() || "(none)",
     "",
     "Selected diff summary:",
-    summarizeDiffForCommitMessage(diff.stdout),
+    summarizeDiffForCommitMessage(scrubSecrets(diff.stdout)),
   ].join("\n");
 }
 
@@ -318,6 +410,8 @@ router.post("/generate-commit-message", async (req, res, next) => {
     if (!endpoint || !model) {
       return res.status(400).json({ error: "AI endpoint and model are required" });
     }
+
+    await validateEndpoint(endpoint);
 
     const changeContext = await buildCommitMessageContext(repo);
     const payload = JSON.stringify({
@@ -384,6 +478,8 @@ router.post("/test-ai-endpoint", async (req, res, next) => {
     if (!endpoint) {
       return res.status(400).json({ error: "AI endpoint is required" });
     }
+
+    await validateEndpoint(endpoint);
 
     const { bodyText, url } = await requestAiEndpoint(
       "models",

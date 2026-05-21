@@ -24,17 +24,30 @@ const AI_BASE = "/api/ai";
 const FEATURE_BASE = "/api";
 
 let cachedToken = "";
+let cachedCsrf = "";
 
 async function getToken(): Promise<string> {
   if (cachedToken) return cachedToken;
   try {
-    const res = await fetch("/api/health");
+    const res = await fetch("/api/token");
     const data = await res.json();
     cachedToken = data.token ?? "";
   } catch {
     cachedToken = "";
   }
   return cachedToken;
+}
+
+async function getCsrfToken(): Promise<string> {
+  if (cachedCsrf) return cachedCsrf;
+  try {
+    const res = await fetch("/api/csrf-token");
+    const data = await res.json();
+    cachedCsrf = data.csrfToken ?? "";
+  } catch {
+    cachedCsrf = "";
+  }
+  return cachedCsrf;
 }
 
 function describeNetworkError(err: unknown, url: string) {
@@ -51,6 +64,7 @@ function describeNetworkError(err: unknown, url: string) {
 
 async function api<T>(url: string, options?: RequestInit, retry = true): Promise<T> {
   const token = await getToken();
+  const csrf = options?.method && options.method !== "GET" ? await getCsrfToken() : "";
   const hasBody = options?.body != null;
   let res: Response;
   try {
@@ -59,6 +73,7 @@ async function api<T>(url: string, options?: RequestInit, retry = true): Promise
       headers: {
         ...(hasBody ? { "Content-Type": "application/json" } : {}),
         ...(token ? { "x-quanta-token": token } : {}),
+        ...(csrf ? { "x-csrf-token": csrf } : {}),
         ...options?.headers,
       },
     });

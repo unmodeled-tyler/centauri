@@ -3,7 +3,7 @@ import { appendFile, readFile, writeFile, mkdir, rm, chmod } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
-import { gitInRepo, expandPath } from "../services/gitExecutor.js";
+import { gitInRepo } from "../services/gitExecutor.js";
 import { validateGitRepo, assertSafeRef, assertSafeArray } from "../utils/validation.js";
 import { cachedGitCall } from "../utils/simpleCache.js";
 import { parseStatus, parseDiff, parseLog, parseBranches, parseRemotes, LOG_SEPARATOR } from "../services/gitParser.js";
@@ -205,6 +205,7 @@ router.get("/stats", async (req, res, next) => {
     if (!repo) {
       return res.status(400).json({ error: "repo path required" });
     }
+    const resolvedRepo = await validateGitRepo(repo);
 
     const explicitEmail = String(req.query.email || "").trim();
     const explicitName = String(req.query.name || "").trim();
@@ -212,10 +213,10 @@ router.get("/stats", async (req, res, next) => {
     const [emailResult, nameResult] = await Promise.all([
       explicitEmail
         ? Promise.resolve({ stdout: explicitEmail, exitCode: 0 })
-        : gitInRepo(repo, ["config", "--get", "user.email"]),
+        : gitInRepo(resolvedRepo, ["config", "--get", "--", "user.email"]),
       explicitName
         ? Promise.resolve({ stdout: explicitName, exitCode: 0 })
-        : gitInRepo(repo, ["config", "--get", "user.name"]),
+        : gitInRepo(resolvedRepo, ["config", "--get", "--", "user.name"]),
     ]);
 
     const authorEmail = explicitEmail || (emailResult.exitCode === 0 ? emailResult.stdout.trim() : "");
@@ -231,7 +232,7 @@ router.get("/stats", async (req, res, next) => {
     const sinceString = since.toISOString().slice(0, 10);
 
     const format = "%ad|%ae|%an";
-    const result = await gitInRepo(repo, [
+    const result = await gitInRepo(resolvedRepo, [
       "log",
       "--all",
       `--since=${sinceString}`,
@@ -334,8 +335,9 @@ router.get("/branches", async (req, res, next) => {
   try {
     const repo = req.query.repo as string;
     if (!repo) return res.status(400).json({ error: "repo path required" });
+    const resolvedRepo = await validateGitRepo(repo);
 
-    const result = await gitInRepo(repo, ["branch", "-a", "--no-color"]);
+    const result = await gitInRepo(resolvedRepo, ["branch", "-a", "--no-color"]);
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -354,12 +356,13 @@ router.post("/checkout", async (req, res, next) => {
       return res.status(400).json({ error: "repo and branch required" });
     }
     assertSafeRef(branch, "branch name");
+    const resolvedRepo = await validateGitRepo(repo);
 
     const args = ["checkout"];
     if (shouldCreate) args.push("-b");
     args.push("--", branch);
 
-    const result = await gitInRepo(repo, args);
+    const result = await gitInRepo(resolvedRepo, args);
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -413,11 +416,12 @@ router.post("/fetch", async (req, res, next) => {
   try {
     const { repo, remote } = req.body;
     if (!repo) return res.status(400).json({ error: "repo path required" });
+    const resolvedRepo = await validateGitRepo(repo);
 
     const args = ["fetch"];
     if (remote) args.push("--", remote);
 
-    const result = await gitInRepo(repo, args);
+    const result = await gitInRepo(resolvedRepo, args);
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -484,11 +488,12 @@ router.post("/stash", async (req, res, next) => {
   try {
     const { repo, message, pop } = req.body;
     if (!repo) return res.status(400).json({ error: "repo path required" });
+    const resolvedRepo = await validateGitRepo(repo);
 
     const args = pop ? ["stash", "pop"] : ["stash", "push", "--"];
     if (message && !pop) args.push("-m", message);
 
-    const result = await gitInRepo(repo, args);
+    const result = await gitInRepo(resolvedRepo, args);
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -502,14 +507,15 @@ router.post("/discard", async (req, res, next) => {
   try {
     const { repo, files } = req.body;
     if (!repo) return res.status(400).json({ error: "repo path required" });
+    const resolvedRepo = await validateGitRepo(repo);
 
     if (files?.length) {
-      const result = await gitInRepo(repo, ["checkout", "--", ...files]);
+      const result = await gitInRepo(resolvedRepo, ["checkout", "--", ...files]);
       if (result.exitCode !== 0) {
         return res.status(500).json({ error: result.stderr });
       }
     } else {
-      const result = await gitInRepo(repo, ["checkout", "--", "."]);
+      const result = await gitInRepo(resolvedRepo, ["checkout", "--", "."]);
       if (result.exitCode !== 0) {
         return res.status(500).json({ error: result.stderr });
       }
@@ -525,8 +531,9 @@ router.post("/gitignore", async (req, res, next) => {
     const { repo, patterns } = req.body;
     if (!repo) return res.status(400).json({ error: "repo path required" });
     if (!patterns?.length) return res.status(400).json({ error: "patterns required" });
+    const resolvedRepo = await validateGitRepo(repo);
 
-    const gitignorePath = join(expandPath(repo), ".gitignore");
+    const gitignorePath = join(resolvedRepo, ".gitignore");
 
     let content = "";
     try {
@@ -545,7 +552,7 @@ router.post("/gitignore", async (req, res, next) => {
 
     await appendFile(gitignorePath, addition, "utf-8");
 
-    await gitInRepo(repo, ["rm", "--cached", "--quiet", "--", ...newPatterns.filter((p: string) => !p.endsWith("/"))]).catch((err) => {
+    await gitInRepo(resolvedRepo, ["rm", "--cached", "--quiet", "--", ...newPatterns.filter((p: string) => !p.endsWith("/"))]).catch((err) => {
       console.warn("[quanta-control] Failed to remove cached patterns:", err);
     });
 
@@ -561,8 +568,9 @@ router.get("/config", async (req, res, next) => {
     const key = req.query.key as string;
     if (!repo) return res.status(400).json({ error: "repo path required" });
     if (!key) return res.status(400).json({ error: "key required" });
+    const resolvedRepo = await validateGitRepo(repo);
 
-    const result = await gitInRepo(repo, ["config", "--get", key]);
+    const result = await gitInRepo(resolvedRepo, ["config", "--get", "--", key]);
     if (result.exitCode !== 0) {
       return res.json({ value: "" });
     }
@@ -578,6 +586,7 @@ router.get("/events", async (req, res) => {
     if (!repo) {
       return res.status(400).json({ error: "repo path required" });
     }
+    const resolvedRepo = await validateGitRepo(repo);
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -585,7 +594,7 @@ router.get("/events", async (req, res) => {
     res.flushHeaders();
 
     const { getRepoWatcher } = await import("../services/repoWatcher.js");
-    const watcher = getRepoWatcher(repo);
+    const watcher = getRepoWatcher(resolvedRepo);
 
     const write = (data: string) => {
       if (!res.writableEnded) {
@@ -635,7 +644,7 @@ router.post("/rebase-interactive", async (req, res, next) => {
 
       const rewordsToHandle = todos.filter((entry: { action: string; hash: string; message: string }) => entry.action === "reword");
       const env: Record<string, string> = {};
-      const safeTodoPath = todoPath.replace(/'/g, "'\\\''");
+      const safeTodoPath = todoPath.replace(/'/g, "'\\''");
       env.GIT_SEQUENCE_EDITOR = `cp '${safeTodoPath}'`;
 
       if (rewordsToHandle.length > 0 && rewordMessages) {
@@ -793,7 +802,7 @@ router.post("/cherry-pick", async (req, res, next) => {
     const result = await gitInRepo(resolvedRepo, ["cherry-pick", "--", commit]);
     if (result.exitCode !== 0) {
       // Auto-abort on conflict so we don't leave the repo in a bad state
-      await gitInRepo(repo, ["cherry-pick", "--abort"]).catch((err) => {
+      await gitInRepo(resolvedRepo, ["cherry-pick", "--abort"]).catch((err) => {
         console.warn("[quanta-control] Failed to abort cherry-pick:", err);
       });
       return res.status(500).json({ error: result.stderr || "Cherry-pick failed" });

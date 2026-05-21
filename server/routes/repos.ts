@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { readdir, stat } from "fs/promises";
+import { realpath as fsRealpath } from "fs/promises";
 import { join } from "path";
 import { homedir } from "os";
 import { isGitRepo, expandPath } from "../services/gitExecutor.js";
@@ -26,6 +27,14 @@ router.get("/browse", async (req, res, next) => {
       return res.status(400).json({ error: "Invalid path" });
     }
     const dir = expandPath(rawPath);
+    const home = homedir();
+
+    // Restrict browsing to the user's home directory
+    const realDir = await fsRealpath(dir).catch(() => dir);
+    const realHome = await fsRealpath(home).catch(() => home);
+    if (!realDir.startsWith(realHome)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
 
     try {
       const s = await stat(dir);

@@ -42,6 +42,8 @@
     "d3-force-3d": "^3.0.6",
     "diff": "^7.0.0",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.1.0",
     "lucide-react": "^0.488.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
