@@ -5,8 +5,10 @@ import rateLimit from "express-rate-limit";
 import { existsSync } from "fs";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
+import { homedir } from "os";
 import { randomBytes, randomUUID } from "crypto";
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { promisify } from "util";
 import gitRoutes from "./routes/git.js";
 import repoRoutes from "./routes/repos.js";
 import systemRoutes from "./routes/system.js";
@@ -20,8 +22,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 // ── Token Persistence ──────────────────────────────────────────────────────────
 
-const TOKEN_DIR = resolve(here, "..");
-const TOKEN_FILE = resolve(TOKEN_DIR, ".quanta-tokens.json");
+const TOKEN_DIR = resolve(homedir(), ".config", "quanta-control");
+const TOKEN_FILE = resolve(TOKEN_DIR, "tokens.json");
 
 interface TokenPair {
   authToken: string;
@@ -43,9 +45,9 @@ function loadTokens(): TokenPair | null {
 
 function persistTokens(auth: string, csrf: string): void {
   try {
-    mkdirSync(TOKEN_DIR, { recursive: true });
+    mkdirSync(TOKEN_DIR, { recursive: true, mode: 0o700 });
     const payload: TokenPair = { authToken: auth, csrfToken: csrf, createdAt: Date.now() };
-    writeFileSync(TOKEN_FILE, JSON.stringify(payload), "utf-8");
+    writeFileSync(TOKEN_FILE, JSON.stringify(payload), { mode: 0o600, encoding: "utf-8" });
   } catch (err) {
     console.warn("[quanta-control] Failed to persist tokens:", err);
   }
@@ -140,12 +142,29 @@ function createRateLimitMap(): Map<string, RateLimitEntry> {
 const SSE_TOKEN_RATE_LIMITS = createRateLimitMap();
 const AI_RATE_LIMITS = createRateLimitMap();
 
+const RATE_LIMIT_MAX_SIZE = 10_000;
+
 function pruneRateLimitMap(map: Map<string, RateLimitEntry>): void {
   const now = Date.now();
   for (const [key, entry] of map) {
     if (now > entry.resetAt) map.delete(key);
   }
+  // Hard cap to prevent unbounded growth from rotating IPs
+  if (map.size > RATE_LIMIT_MAX_SIZE) {
+    const keys = [...map.keys()];
+    for (let i = 0; i < keys.length - RATE_LIMIT_MAX_SIZE; i++) {
+      map.delete(keys[i]!);
+    }
+  }
 }
+
+// Periodic cleanup to prevent unbounded map growth even without traffic
+const CLEANUP_INTERVAL_MS = 60_000;
+setInterval(() => {
+  cleanExpiredSseTokens();
+  pruneRateLimitMap(SSE_TOKEN_RATE_LIMITS);
+  pruneRateLimitMap(AI_RATE_LIMITS);
+}, CLEANUP_INTERVAL_MS).unref();
 
 function checkRateLimit(
   map: Map<string, RateLimitEntry>,
@@ -169,19 +188,29 @@ function checkRateLimit(
 
 const requestCounts = new Map<string, number>();
 const errorCounts = new Map<string, number>();
-const latencies: number[] = [];
-let startTime = Date.now();
+
+// Ring buffer for latency metrics — avoids O(n) splice operations
+const LATENCY_RING_SIZE = 1000;
+const latencyRing = new Float64Array(LATENCY_RING_SIZE);
+let latencyRingHead = 0;
+let latencyRingCount = 0;
+
+const startTime = Date.now();
 
 function recordRequest(path: string, latencyMs: number, isError = false): void {
   requestCounts.set(path, (requestCounts.get(path) ?? 0) + 1);
   if (isError) errorCounts.set(path, (errorCounts.get(path) ?? 0) + 1);
-  latencies.push(latencyMs);
-  if (latencies.length > 1000) latencies.splice(0, 500); // keep last 1000
+  latencyRing[latencyRingHead] = latencyMs;
+  latencyRingHead = (latencyRingHead + 1) % LATENCY_RING_SIZE;
+  if (latencyRingCount < LATENCY_RING_SIZE) latencyRingCount++;
 }
 
 function getMetrics() {
   const now = Date.now();
-  const sorted = [...latencies].sort((a, b) => a - b);
+  const samples = latencyRingCount < LATENCY_RING_SIZE
+    ? Array.from(latencyRing.subarray(0, latencyRingCount))
+    : Array.from(latencyRing);
+  const sorted = [...samples].sort((a, b) => a - b);
   const p50 = sorted[Math.floor(sorted.length * 0.5)] ?? 0;
   const p95 = sorted[Math.floor(sorted.length * 0.95)] ?? 0;
   const p99 = sorted[Math.floor(sorted.length * 0.99)] ?? 0;
@@ -189,7 +218,7 @@ function getMetrics() {
     uptimeMs: now - startTime,
     requests: Object.fromEntries(requestCounts),
     errors: Object.fromEntries(errorCounts),
-    latencyMs: { p50, p95, p99, sample: latencies.length },
+    latencyMs: { p50, p95, p99, sample: latencyRingCount },
     sseTokensActive: sseTokens.size,
     rateLimitMaps: {
       sseToken: SSE_TOKEN_RATE_LIMITS.size,
@@ -243,6 +272,17 @@ function generateNonce(): string {
   return randomBytes(CSP_NONCE_BYTES).toString("base64");
 }
 
+  // Validate Content-Type on state-changing requests to prevent CSRF via content-type mismatch
+  app.use("/api", (req, _res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
+      const ct = req.headers["content-type"];
+      if (req.body && ct && !ct.startsWith("application/json")) {
+        return next(Object.assign(new Error("Content-Type must be application/json"), { status: 415 }));
+      }
+    }
+    next();
+  });
+
   // Request ID + timing middleware
   app.use((req, _res, next) => {
     const requestId = (req.headers["x-request-id"] as string) ?? randomUUID();
@@ -277,7 +317,7 @@ function generateNonce(): string {
   app.use("/api", (req, _res, next) => {
     const requestId = (req.headers["x-request-id"] as string) ?? "unknown";
     // Health, token, csrf-token and sse-token endpoints are always accessible
-    const alwaysOpen = ["/health", "/token", "/csrf-token", "/sse-token", "/metrics"];
+    const alwaysOpen = ["/health", "/token", "/csrf-token", "/sse-token"];
     if (alwaysOpen.includes(req.path)) return next();
 
     const headerToken = req.headers["x-quanta-token"];
@@ -319,7 +359,6 @@ function generateNonce(): string {
 
   app.get("/api/health", (_req, res) => {
     import("child_process").then(({ execFile }) => {
-      const { promisify } = require("util");
       const execFileAsync = promisify(execFile);
       execFileAsync("git", ["--version"])
         .then(({ stdout }: { stdout: string }) => {
@@ -342,7 +381,10 @@ function generateNonce(): string {
     });
   });
 
-  app.get("/api/metrics", (_req, res) => {
+  app.get("/api/metrics", (req, res) => {
+    if (!isLocalRequest(req)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
     res.json(getMetrics());
   });
 
@@ -452,6 +494,10 @@ export async function startServer(options?: { port?: number; host?: string }) {
   const defaultPort = process.env.NODE_ENV === "production" ? "4123" : "3001";
   const port = options?.port ?? parseInt(process.env.PORT || defaultPort, 10);
   const host = options?.host ?? (process.env.HOST || "127.0.0.1");
+
+  if (host !== "127.0.0.1" && host !== "localhost" && host !== "::1") {
+    logger.warn("Server binding to non-local address — auth tokens will transit in cleartext. Consider using TLS.", { host });
+  }
 
   return new Promise<{ server: ReturnType<typeof app.listen>; token: string }>((resolveServer, reject) => {
     const server = app.listen(port, host, () => {

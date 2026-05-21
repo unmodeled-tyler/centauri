@@ -5,12 +5,21 @@ import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { gitInRepo } from "../services/gitExecutor.js";
 import { validateGitRepo, assertSafeRef, assertSafeArray } from "../utils/validation.js";
-import { cachedGitCall } from "../utils/simpleCache.js";
-import { withRepoLock } from "../utils/gitRouteHelpers.js";
+import { cachedGitCall, cachedStatsCall, invalidateCache } from "../utils/simpleCache.js";
+import { withRepoLock, withGitConcurrencyLimit } from "../utils/gitRouteHelpers.js";
 import { parseStatus, parseDiff, parseLog, parseBranches, parseRemotes, LOG_SEPARATOR } from "../services/gitParser.js";
 
 const router = Router();
 
+/** Invalidate all cached git data for a repo after a write operation. */
+function afterWrite(resolvedRepo: string): void {
+  invalidateCache(resolvedRepo);
+}
+
+/** Wrap a git operation with both repo-level locking and global concurrency limiting. */
+function withGitLock<T>(repoPath: string, fn: () => Promise<T>): Promise<T> {
+  return withGitConcurrencyLimit(() => withRepoLock(repoPath, fn));
+}
 
 
 router.get("/status", async (req, res, next) => {
@@ -123,12 +132,13 @@ router.post("/stage", async (req, res, next) => {
     const resolvedRepo = await validateGitRepo(repo);
 
     const filesArg = assertSafeArray(files ?? ["."], "files");
-    const result = await withRepoLock(resolvedRepo, () =>
+    const result = await withGitLock(resolvedRepo, () =>
       gitInRepo(resolvedRepo, ["add", "--", ...(filesArg.length ? filesArg : ["."])])
     );
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
+    afterWrite(resolvedRepo);
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -142,12 +152,13 @@ router.post("/unstage", async (req, res, next) => {
     const resolvedRepo = await validateGitRepo(repo);
 
     const filesArg = assertSafeArray(files ?? ["."], "files");
-    const result = await withRepoLock(resolvedRepo, () =>
+    const result = await withGitLock(resolvedRepo, () =>
       gitInRepo(resolvedRepo, ["reset", "HEAD", "--", ...(filesArg.length ? filesArg : ["."])])
     );
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
+    afterWrite(resolvedRepo);
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -170,10 +181,11 @@ router.post("/commit", async (req, res, next) => {
     const args = ["commit", "-m", message];
     if (amend) args.push("--amend", "--no-edit");
 
-    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
+    const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
+    afterWrite(resolvedRepo);
     res.json({ success: true, output: result.stdout });
   } catch (err) {
     next(err);
@@ -242,13 +254,14 @@ router.get("/stats", async (req, res, next) => {
     const sinceString = since.toISOString().slice(0, 10);
 
     const format = "%ad|%ae|%an";
-    const result = await gitInRepo(resolvedRepo, [
+    const statsCacheKey = `stats:${resolvedRepo}:${days}:${authorEmail || ""}:${authorName || ""}`;
+    const result = await cachedStatsCall(statsCacheKey, () => gitInRepo(resolvedRepo, [
       "log",
       "--all",
       `--since=${sinceString}`,
       "--date=short",
       `--format=${format}`,
-    ]);
+    ]));
 
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
@@ -372,10 +385,11 @@ router.post("/checkout", async (req, res, next) => {
     if (shouldCreate) args.push("-b");
     args.push("--", branch);
 
-    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
+    const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
+    afterWrite(resolvedRepo);
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -392,10 +406,11 @@ router.post("/delete-branch", async (req, res, next) => {
     const resolvedRepo = await validateGitRepo(repo);
 
     const flag = force ? "-D" : "-d";
-    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["branch", flag, "--", branch]));
+    const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["branch", flag, "--", branch]));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
+    afterWrite(resolvedRepo);
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -431,10 +446,11 @@ router.post("/fetch", async (req, res, next) => {
     const args = ["fetch"];
     if (remote) args.push("--", remote);
 
-    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
+    const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
+    afterWrite(resolvedRepo);
     res.json({ success: true, output: result.stdout });
   } catch (err) {
     next(err);
@@ -457,10 +473,11 @@ router.post("/pull", async (req, res, next) => {
       args.push("--", branch);
     }
 
-    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
+    const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
+    afterWrite(resolvedRepo);
     res.json({ success: true, output: result.stdout });
   } catch (err) {
     next(err);
@@ -484,10 +501,11 @@ router.post("/push", async (req, res, next) => {
       args.push("--", branch);
     }
 
-    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
+    const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
+    afterWrite(resolvedRepo);
     res.json({ success: true, output: result.stdout });
   } catch (err) {
     next(err);
@@ -503,10 +521,11 @@ router.post("/stash", async (req, res, next) => {
     const args = pop ? ["stash", "pop"] : ["stash", "push", "--"];
     if (message && !pop) args.push("-m", message);
 
-    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
+    const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
+    afterWrite(resolvedRepo);
     res.json({ success: true, output: result.stdout });
   } catch (err) {
     next(err);
@@ -520,16 +539,17 @@ router.post("/discard", async (req, res, next) => {
     const resolvedRepo = await validateGitRepo(repo);
 
     if (files?.length) {
-      const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["checkout", "--", ...files]));
+      const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["checkout", "--", ...files]));
       if (result.exitCode !== 0) {
         return res.status(500).json({ error: result.stderr });
       }
     } else {
-      const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["checkout", "--", "."]));
+      const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["checkout", "--", "."]));
       if (result.exitCode !== 0) {
         return res.status(500).json({ error: result.stderr });
       }
     }
+    afterWrite(resolvedRepo);
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -560,18 +580,34 @@ router.post("/gitignore", async (req, res, next) => {
 
     const addition = (content && !content.endsWith("\n") ? "\n" : "") + newPatterns.join("\n") + "\n";
 
-    await withRepoLock(resolvedRepo, async () => {
+    await withGitLock(resolvedRepo, async () => {
       await appendFile(gitignorePath, addition, "utf-8");
       await gitInRepo(resolvedRepo, ["rm", "--cached", "--quiet", "--", ...newPatterns.filter((p: string) => !p.endsWith("/"))]);
     }).catch((err) => {
       console.warn("[quanta-control] Failed to remove cached patterns:", err);
     });
 
+    afterWrite(resolvedRepo);
     res.json({ success: true, added: newPatterns });
   } catch (err) {
     next(err);
   }
 });
+
+const ALLOWED_CONFIG_KEYS = new Set([
+  "user.name",
+  "user.email",
+  "core.editor",
+  "core.autocrlf",
+  "core.eol",
+  "init.defaultBranch",
+  "pull.rebase",
+  "pull.ff",
+  "push.autoSetupRemote",
+  "merge.conflictstyle",
+  "rerere.enabled",
+  "core.ignorecase",
+]);
 
 router.get("/config", async (req, res, next) => {
   try {
@@ -579,6 +615,9 @@ router.get("/config", async (req, res, next) => {
     const key = req.query.key as string;
     if (!repo) return res.status(400).json({ error: "repo path required" });
     if (!key) return res.status(400).json({ error: "key required" });
+    if (!ALLOWED_CONFIG_KEYS.has(key)) {
+      return res.status(403).json({ error: "config key not allowed" });
+    }
     const resolvedRepo = await validateGitRepo(repo);
 
     const result = await gitInRepo(resolvedRepo, ["config", "--get", "--", key]);
@@ -701,11 +740,11 @@ router.post("/rebase-interactive", async (req, res, next) => {
         env.GIT_EDITOR = `node ${rewordScriptPath}`;
       }
 
-      const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["rebase", "--interactive", "--", baseCommit], env));
+      const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["rebase", "--interactive", "--", baseCommit], env));
 
       if (result.exitCode !== 0) {
         const hasConflicts = result.stderr.includes("CONFLICT") || result.stderr.includes("could not apply");
-        await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["rebase", "--abort"])).catch((err) => {
+        await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["rebase", "--abort"])).catch((err) => {
           console.warn("[quanta-control] Failed to abort rebase:", err);
         });
 
@@ -716,6 +755,7 @@ router.post("/rebase-interactive", async (req, res, next) => {
         });
       }
 
+      afterWrite(resolvedRepo);
       res.json({ success: true, output: result.stdout || result.stderr });
     } finally {
       await rm(workDir, { recursive: true, force: true }).catch(() => {});
@@ -731,10 +771,11 @@ router.post("/rebase-abort", async (req, res, next) => {
     if (!repo) return res.status(400).json({ error: "repo path required" });
     const resolvedRepo = await validateGitRepo(repo);
 
-    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["rebase", "--abort"]));
+    const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["rebase", "--abort"]));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
+    afterWrite(resolvedRepo);
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -792,11 +833,12 @@ router.post("/tag-create", async (req, res, next) => {
     args.push("--", name);
     if (ref) { assertSafeRef(ref, "ref"); args.push("--", ref); }
 
-    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
+    const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
 
+    afterWrite(resolvedRepo);
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -810,11 +852,12 @@ router.post("/tag-delete", async (req, res, next) => {
     assertSafeRef(name, "tag name");
     const resolvedRepo = await validateGitRepo(repo);
 
-    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["tag", "-d", "--", name]));
+    const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["tag", "-d", "--", name]));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
 
+    afterWrite(resolvedRepo);
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -830,15 +873,16 @@ router.post("/cherry-pick", async (req, res, next) => {
     assertSafeRef(commit, "commit hash");
     const resolvedRepo = await validateGitRepo(repo);
 
-    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["cherry-pick", "--", commit]));
+    const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["cherry-pick", "--", commit]));
     if (result.exitCode !== 0) {
       // Auto-abort on conflict so we don't leave the repo in a bad state
-      await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["cherry-pick", "--abort"])).catch((err) => {
+      await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["cherry-pick", "--abort"])).catch((err) => {
         console.warn("[quanta-control] Failed to abort cherry-pick:", err);
       });
       return res.status(500).json({ error: result.stderr || "Cherry-pick failed" });
     }
 
+    afterWrite(resolvedRepo);
     res.json({ success: true, output: result.stdout || result.stderr });
   } catch (err) {
     next(err);

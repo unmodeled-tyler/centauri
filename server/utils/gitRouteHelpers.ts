@@ -37,20 +37,66 @@ export function parseGitLineMatches(stdout: string): LineMatch[] {
 
 const repoQueues = new Map<string, Promise<unknown>>();
 
+const REPO_LOCK_TIMEOUT_MS = 60_000;
+
 /**
  * Serializes async operations per repo so concurrent mutations don't conflict.
  * Uses a chain of promises so operations run in order but don't block each other
- * across different repos.
+ * across different repos. Includes a timeout to prevent indefinite blocking.
  */
 export function withRepoLock<T>(repoPath: string, fn: () => Promise<T>): Promise<T> {
   const prev = repoQueues.get(repoPath) ?? Promise.resolve();
   const next = prev.then(() => fn(), () => fn());
   repoQueues.set(repoPath, next);
+
   // Clean up old entries after they resolve
   next.catch(() => {}).then(() => {
     if (repoQueues.get(repoPath) === next) {
       repoQueues.delete(repoPath);
     }
   });
-  return next as Promise<T>;
+
+  // Timeout wrapper
+  const timeout = new Promise<never>((_resolve, reject) => {
+    setTimeout(() => {
+      reject(Object.assign(new Error(`Repo lock timed out after ${REPO_LOCK_TIMEOUT_MS}ms`), { status: 504 }));
+    }, REPO_LOCK_TIMEOUT_MS);
+  });
+
+  return Promise.race([next as Promise<T>, timeout]);
+}
+
+// ── Global concurrency limit for git operations ────────────────────────────
+
+const MAX_CONCURRENT_GIT = 8;
+let activeGitOps = 0;
+const gitQueue: Array<() => void> = [];
+
+export function withGitConcurrencyLimit<T>(fn: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const run = async () => {
+      try {
+        const result = await fn();
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      } finally {
+        activeGitOps--;
+        if (gitQueue.length > 0) {
+          const next = gitQueue.shift()!;
+          next();
+        }
+      }
+    };
+
+    if (activeGitOps < MAX_CONCURRENT_GIT) {
+      activeGitOps++;
+      run();
+    } else {
+      gitQueue.push(() => {
+        activeGitOps++;
+        run();
+      });
+    }
+  });
 }

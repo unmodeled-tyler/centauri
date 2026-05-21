@@ -19,3 +19,4 @@ package-lock.json
 test-git.mjs
 *.tsbuildinfo
 .gitnexus
+.quanta-tokens.json

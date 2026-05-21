@@ -1,5 +1,5 @@
 import chokidar from "chokidar";
-import { sep } from "path";
+import { join, relative, sep } from "path";
 
 interface WatcherClient {
   id: number;
@@ -14,19 +14,27 @@ class RepoWatcherInstance {
   private stopTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private repoPath: string) {
-    this.watcher = chokidar.watch(repoPath, {
-      ignored: shouldIgnorePath,
-      ignoreInitial: true,
-      persistent: true,
-      awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 100 },
-    });
+    const gitDir = join(repoPath, ".git");
+    this.watcher = chokidar.watch(
+      [
+        repoPath,
+        join(gitDir, "HEAD"),
+        join(gitDir, "refs"),
+        join(gitDir, "index"),
+        join(gitDir, "stash"),
+      ],
+      {
+        ignored: (path) => shouldIgnorePath(repoPath, path),
+        ignoreInitial: true,
+        persistent: true,
+        awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
+      },
+    );
 
     this.watcher
       .on("add", () => this.onChange())
       .on("change", () => this.onChange())
       .on("unlink", () => this.onChange())
-      .on("addDir", () => this.onChange())
-      .on("unlinkDir", () => this.onChange())
       .on("error", (err) => {
         console.warn(`[quanta-control] Repo watcher disabled for ${this.repoPath}:`, err);
         this.stop();
@@ -80,16 +88,8 @@ class RepoWatcherInstance {
 
 const WATCHER_MAP = new Map<string, RepoWatcherInstance>();
 
-export function shutdownAllWatchers(): void {
-  for (const [path, watcher] of WATCHER_MAP) {
-    watcher.stop();
-    WATCHER_MAP.delete(path);
-  }
-}
-
 const IGNORED_SEGMENTS = new Set([
   ".cache",
-  ".git",
   ".idea",
   ".next",
   ".nuxt",
@@ -103,13 +103,26 @@ const IGNORED_SEGMENTS = new Set([
   "out",
 ]);
 
-function shouldIgnorePath(path: string) {
-  const segments = path.split(/[\\/]+/);
+const WATCHED_GIT_PATHS = new Set(["HEAD", "index", "refs", "stash"]);
+
+function shouldIgnorePath(repoPath: string, path: string) {
+  const relativePath = relative(repoPath, path);
+  const segments = relativePath.split(/[\\/]+/).filter(Boolean);
+  if (segments[0] === ".git") {
+    return segments.length > 1 && !WATCHED_GIT_PATHS.has(segments[1]!);
+  }
   if (segments.some((segment) => IGNORED_SEGMENTS.has(segment))) {
     return true;
   }
 
   return path.endsWith(`${sep}.DS_Store`) || path.endsWith(".log");
+}
+
+export function shutdownAllWatchers(): void {
+  for (const [path, watcher] of WATCHER_MAP) {
+    watcher.stop();
+    WATCHER_MAP.delete(path);
+  }
 }
 
 export function getRepoWatcher(repoPath: string): RepoWatcherInstance {

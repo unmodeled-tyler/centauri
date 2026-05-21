@@ -10,6 +10,7 @@ const router = Router();
 const MAX_DIFF_CHARS = 12000;
 const MAX_DIFF_LINES_PER_FILE = 80;
 const AI_REQUEST_TIMEOUT_MS = 90000;
+const AI_MAX_RESPONSE_BYTES = 5 * 1024 * 1024; // 5MB limit on AI provider responses
 
 const SECRET_PATTERNS = [
   /password\s*[:=]\s*\S+/gi,
@@ -338,6 +339,9 @@ async function requestAiEndpoint(
     }
 
     const bodyText = await response.text();
+    if (bodyText.length > AI_MAX_RESPONSE_BYTES) {
+      throw createHttpError(502, `AI provider response too large (${Math.round(bodyText.length / 1024 / 1024)}MB). Try a smaller model or shorter context.`);
+    }
     if (response.ok) {
       return { bodyText, url };
     }

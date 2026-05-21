@@ -1,10 +1,12 @@
 import { Router } from "express";
-import { gitInRepo } from "../services/gitExecutor.js";
+import { gitInRepo, git } from "../services/gitExecutor.js";
 import { validateGitRepo, assertSafeRef } from "../utils/validation.js";
 import { cachedGitCall } from "../utils/simpleCache.js";
 import { parseLog, parseDiff } from "../services/gitParser.js";
 import type { BlameLine } from "../../src/types/git.js";
-import { parseBoundedLimit, parseGitLineMatches } from "../utils/gitRouteHelpers.js";
+import { parseBoundedLimit, parseGitLineMatches, withGitConcurrencyLimit } from "../utils/gitRouteHelpers.js";
+
+const GIT_TIMEOUT_LONG_MS = 60_000;
 
 const LOG_FORMAT = `--format=%H|%h|%an|%ae|%ad|%s|%P|%D`;
 
@@ -54,9 +56,10 @@ router.get("/blame", async (req, res, next) => {
     }
     const resolvedRepo = await validateGitRepo(repoPath);
 
-    const result = await gitInRepo(resolvedRepo, [
-      "blame", "--porcelain", "--", file,
-    ]);
+    const result = await withGitConcurrencyLimit(() => git(["blame", "--porcelain", "--", file], {
+      cwd: resolvedRepo,
+      timeoutMs: GIT_TIMEOUT_LONG_MS,
+    }));
 
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
@@ -158,12 +161,17 @@ router.get("/history", async (req, res, next) => {
 
 // ── Grep (code search) ──
 
+const MAX_GREP_PATTERN_LENGTH = 200;
+
 router.get("/grep", async (req, res, next) => {
   try {
     const repoPath = req.query.repo as string;
     const pattern = req.query.pattern as string;
     if (!repoPath || !pattern) {
       return res.status(400).json({ error: "repo and pattern required" });
+    }
+    if (pattern.length > MAX_GREP_PATTERN_LENGTH) {
+      return res.status(400).json({ error: `pattern too long (max ${MAX_GREP_PATTERN_LENGTH} characters)` });
     }
     const resolvedRepo = await validateGitRepo(repoPath);
 

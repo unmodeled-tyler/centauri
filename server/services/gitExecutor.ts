@@ -56,6 +56,7 @@ export interface GitExecOptions {
   env?: Record<string, string>;
   maxBuffer?: number;
   input?: string | Buffer;
+  timeoutMs?: number;
 }
 
 export interface GitExecResult {
@@ -73,17 +74,25 @@ function truncateStdout(stdout: string): string {
   return stdout;
 }
 
+const DEFAULT_GIT_TIMEOUT_MS = 30_000;
+
 export async function git(
   args: string[],
   options: GitExecOptions = {},
 ): Promise<GitExecResult> {
-  const { cwd, env, maxBuffer = 10 * 1024 * 1024, input } = options;
+  const { cwd, env, maxBuffer = 10 * 1024 * 1024, input, timeoutMs } = options;
 
   const resolvedCwd = cwd ? expandPath(cwd) : undefined;
+  const timeout = timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS;
 
   return withRetry(async () => {
     if (input) {
       return new Promise<GitExecResult>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          child.kill("SIGKILL");
+          reject(Object.assign(new Error(`git command timed out after ${timeout}ms`), { status: 504 }));
+        }, timeout);
+
         const child = spawn("git", args, {
           cwd: resolvedCwd,
           env: { ...process.env, ...env } as Record<string, string>,
@@ -98,6 +107,7 @@ export async function git(
         child.stderr.on("data", (data) => { stderr += data; });
 
         child.on("error", (err: unknown) => {
+          clearTimeout(timer);
           if ((err as NodeJS.ErrnoException).code === "ENOENT") {
             reject(new Error("git is not installed or not in PATH"));
           } else {
@@ -106,6 +116,7 @@ export async function git(
         });
 
         child.on("close", (code) => {
+          clearTimeout(timer);
           resolve({ stdout: truncateStdout(stdout), stderr, exitCode: code ?? 0 });
         });
 
@@ -119,11 +130,17 @@ export async function git(
         env: { ...process.env, ...env },
         maxBuffer,
         encoding: "utf-8",
+        timeout,
       });
       return { stdout: truncateStdout(stdout || ""), stderr: stderr || "", exitCode: 0 };
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         throw new Error("git is not installed or not in PATH");
+      }
+      // Re-throw timeout errors so they propagate as 504s
+      const nodeErr = err as Record<string, unknown>;
+      if (nodeErr.killed === true || nodeErr.signal === "SIGKILL") {
+        throw Object.assign(new Error(`git command timed out after ${timeout}ms`), { status: 504 });
       }
       return {
         stdout: truncateStdout((err as { stdout?: string }).stdout || ""),

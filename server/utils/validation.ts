@@ -2,6 +2,17 @@ import { realpath } from "fs/promises";
 import { homedir } from "os";
 import { isGitRepo, expandPath } from "../services/gitExecutor.js";
 
+const BLOCKED_DIR_SEGMENTS = new Set([
+  ".ssh",
+  ".gnupg",
+  ".aws",
+  ".kube",
+  ".config",
+  ".pki",
+  "Private",
+  "priv",
+]);
+
 export function createHttpError(status: number, message: string) {
   return Object.assign(new Error(message), { status });
 }
@@ -14,6 +25,13 @@ export async function validateGitRepo(repoPath: string): Promise<string> {
 
   // Ensure resolved path stays within the user's home directory
   if (!realResolved.startsWith(realHome)) {
+    throw createHttpError(403, "Access denied");
+  }
+
+  // Block access to sensitive directories
+  const relativePath = realResolved.slice(realHome.length);
+  const segments = relativePath.split(/\/+/).filter(Boolean);
+  if (segments.length > 0 && BLOCKED_DIR_SEGMENTS.has(segments[0]!)) {
     throw createHttpError(403, "Access denied");
   }
 
