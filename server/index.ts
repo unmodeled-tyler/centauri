@@ -218,6 +218,10 @@ export function createApp() {
       }
     },
   }));
+
+  // Body parsing with size limits to prevent DoS via oversized payloads
+  app.use(express.json({ limit: "1mb" }));
+  app.use(express.urlencoded({ extended: false, limit: "1mb" }));
   // Request nonce for CSP (regenerated on every request)
 const CSP_NONCE_BYTES = 16;
 

@@ -12,16 +12,26 @@ const MAX_DIFF_LINES_PER_FILE = 80;
 const AI_REQUEST_TIMEOUT_MS = 90000;
 
 const SECRET_PATTERNS = [
-  /password\s*[:=]\s*.+/gi,
-  /api[_-]?key\s*[:=]\s*.+/gi,
-  /secret\s*[:=]\s*.+/gi,
-  /token\s*[:=]\s*.+/gi,
-  /private[_-]?key\s*[:=]\s*.+/gi,
-  /aws_access_key_id\s*=\s*.+/gi,
-  /aws_secret_access_key\s*=\s*.+/gi,
-  /auth\s*[:=]\s*.+/gi,
+  /password\s*[:=]\s*\S+/gi,
+  /api[_-]?key\s*[:=]\s*\S+/gi,
+  /secret\s*[:=]\s*\S+/gi,
+  /token\s*[:=]\s*\S+/gi,
+  /private[_-]?key\s*[:=]\s*\S+/gi,
+  /aws_access_key_id\s*=\s*\S+/gi,
+  /aws_secret_access_key\s*=\s*\S+/gi,
+  /auth\s*[:=]\s*(?:bearer\s+)?\S+/gi,
   /bearer\s+\S+/gi,
   /\b(sk-[a-zA-Z0-9]{20,})\b/g,
+  // SSH private keys (full key block)
+  /-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----[\s\S]*?-----END\s+(?:RSA\s+)?PRIVATE\s+KEY-----/gi,
+  // SSH public key fingerprints
+  /SHA256:[a-zA-Z0-9+/=]{43}/gi,
+  // JWT tokens (three base64url segments separated by dots)
+  /\beyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\b/g,
+  // Database connection strings
+  /\b(?:mongodb|postgres|mysql|redis)(?:ql)?:\/\/[^\s'"]+/gi,
+  // Generic connection strings with credentials
+  /\b[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s:@"']+:[^\s:@"']+@[^\s'"]+/gi,
 ];
 
 function scrubSecrets(value: string): string {

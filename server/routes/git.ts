@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import { gitInRepo } from "../services/gitExecutor.js";
 import { validateGitRepo, assertSafeRef, assertSafeArray } from "../utils/validation.js";
 import { cachedGitCall } from "../utils/simpleCache.js";
+import { withRepoLock } from "../utils/gitRouteHelpers.js";
 import { parseStatus, parseDiff, parseLog, parseBranches, parseRemotes, LOG_SEPARATOR } from "../services/gitParser.js";
 
 const router = Router();
@@ -122,7 +123,9 @@ router.post("/stage", async (req, res, next) => {
     const resolvedRepo = await validateGitRepo(repo);
 
     const filesArg = assertSafeArray(files ?? ["."], "files");
-    const result = await gitInRepo(resolvedRepo, ["add", "--", ...(filesArg.length ? filesArg : ["."])]);
+    const result = await withRepoLock(resolvedRepo, () =>
+      gitInRepo(resolvedRepo, ["add", "--", ...(filesArg.length ? filesArg : ["."])])
+    );
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -139,7 +142,9 @@ router.post("/unstage", async (req, res, next) => {
     const resolvedRepo = await validateGitRepo(repo);
 
     const filesArg = assertSafeArray(files ?? ["."], "files");
-    const result = await gitInRepo(resolvedRepo, ["reset", "HEAD", "--", ...(filesArg.length ? filesArg : ["."])]);
+    const result = await withRepoLock(resolvedRepo, () =>
+      gitInRepo(resolvedRepo, ["reset", "HEAD", "--", ...(filesArg.length ? filesArg : ["."])])
+    );
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -149,18 +154,23 @@ router.post("/unstage", async (req, res, next) => {
   }
 });
 
+const MAX_COMMIT_MESSAGE_LENGTH = 10000;
+
 router.post("/commit", async (req, res, next) => {
   try {
     const { repo, message, amend } = req.body;
     if (!repo || !message) {
       return res.status(400).json({ error: "repo and message required" });
     }
+    if (typeof message !== "string" || message.length > MAX_COMMIT_MESSAGE_LENGTH) {
+      return res.status(400).json({ error: "commit message too long" });
+    }
     const resolvedRepo = await validateGitRepo(repo);
 
     const args = ["commit", "-m", message];
     if (amend) args.push("--amend", "--no-edit");
 
-    const result = await gitInRepo(resolvedRepo, args);
+    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -362,7 +372,7 @@ router.post("/checkout", async (req, res, next) => {
     if (shouldCreate) args.push("-b");
     args.push("--", branch);
 
-    const result = await gitInRepo(resolvedRepo, args);
+    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -382,7 +392,7 @@ router.post("/delete-branch", async (req, res, next) => {
     const resolvedRepo = await validateGitRepo(repo);
 
     const flag = force ? "-D" : "-d";
-    const result = await gitInRepo(resolvedRepo, ["branch", flag, "--", branch]);
+    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["branch", flag, "--", branch]));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -421,7 +431,7 @@ router.post("/fetch", async (req, res, next) => {
     const args = ["fetch"];
     if (remote) args.push("--", remote);
 
-    const result = await gitInRepo(resolvedRepo, args);
+    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -447,7 +457,7 @@ router.post("/pull", async (req, res, next) => {
       args.push("--", branch);
     }
 
-    const result = await gitInRepo(resolvedRepo, args);
+    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -474,7 +484,7 @@ router.post("/push", async (req, res, next) => {
       args.push("--", branch);
     }
 
-    const result = await gitInRepo(resolvedRepo, args);
+    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -493,7 +503,7 @@ router.post("/stash", async (req, res, next) => {
     const args = pop ? ["stash", "pop"] : ["stash", "push", "--"];
     if (message && !pop) args.push("-m", message);
 
-    const result = await gitInRepo(resolvedRepo, args);
+    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -510,12 +520,12 @@ router.post("/discard", async (req, res, next) => {
     const resolvedRepo = await validateGitRepo(repo);
 
     if (files?.length) {
-      const result = await gitInRepo(resolvedRepo, ["checkout", "--", ...files]);
+      const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["checkout", "--", ...files]));
       if (result.exitCode !== 0) {
         return res.status(500).json({ error: result.stderr });
       }
     } else {
-      const result = await gitInRepo(resolvedRepo, ["checkout", "--", "."]);
+      const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["checkout", "--", "."]));
       if (result.exitCode !== 0) {
         return res.status(500).json({ error: result.stderr });
       }
@@ -550,9 +560,10 @@ router.post("/gitignore", async (req, res, next) => {
 
     const addition = (content && !content.endsWith("\n") ? "\n" : "") + newPatterns.join("\n") + "\n";
 
-    await appendFile(gitignorePath, addition, "utf-8");
-
-    await gitInRepo(resolvedRepo, ["rm", "--cached", "--quiet", "--", ...newPatterns.filter((p: string) => !p.endsWith("/"))]).catch((err) => {
+    await withRepoLock(resolvedRepo, async () => {
+      await appendFile(gitignorePath, addition, "utf-8");
+      await gitInRepo(resolvedRepo, ["rm", "--cached", "--quiet", "--", ...newPatterns.filter((p: string) => !p.endsWith("/"))]);
+    }).catch((err) => {
       console.warn("[quanta-control] Failed to remove cached patterns:", err);
     });
 
@@ -628,6 +639,13 @@ router.post("/rebase-interactive", async (req, res, next) => {
     if (!baseCommit) return res.status(400).json({ error: "base commit required" });
     if (!todos?.length) return res.status(400).json({ error: "todo list required" });
     assertSafeRef(baseCommit, "base commit");
+    // Validate todos structure
+    for (const entry of todos) {
+      if (typeof entry.action !== "string" || typeof entry.hash !== "string" || typeof entry.message !== "string") {
+        return res.status(400).json({ error: "invalid todo entry format" });
+      }
+      assertSafeRef(entry.hash, "todo hash");
+    }
     const resolvedRepo = await validateGitRepo(repo);
 
     const workDir = join(tmpdir(), `quanta-rebase-${randomUUID()}`);
@@ -646,8 +664,15 @@ router.post("/rebase-interactive", async (req, res, next) => {
 
       const rewordsToHandle = todos.filter((entry: { action: string; hash: string; message: string }) => entry.action === "reword");
       const env: Record<string, string> = {};
-      const safeTodoPath = todoPath.replace(/'/g, "'\\''");
-      env.GIT_SEQUENCE_EDITOR = `cp '${safeTodoPath}'`;
+
+      // Write a Node.js script for the sequence editor to avoid shell interpolation
+      const seqEditorPath = join(workDir, "seq-editor.mjs");
+      const seqEditorScript = [
+        "import { copyFileSync } from 'fs';",
+        `copyFileSync(${JSON.stringify(todoPath)}, process.argv[1]);`,
+      ].join("\n");
+      await writeFile(seqEditorPath, seqEditorScript, { mode: 0o600, encoding: "utf-8" });
+      env.GIT_SEQUENCE_EDITOR = `node ${seqEditorPath}`;
 
       if (rewordsToHandle.length > 0 && rewordMessages) {
         const rewordDir = join(workDir, "rewords");
@@ -659,24 +684,28 @@ router.post("/rebase-interactive", async (req, res, next) => {
         }
         const counterPath = join(workDir, "reword-index");
         await writeFile(counterPath, "0", { mode: 0o600, encoding: "utf-8" });
-        const scriptLines = [
-          "#!/bin/bash",
-          `COMMIT_MSG_FILE="$1"`,
-          `INDEX=$(cat "${counterPath}")`,
-          `cat "${rewordDir}/$INDEX.txt" > "$COMMIT_MSG_FILE"`,
-          `echo $((INDEX + 1)) > "${counterPath}"`,
-        ];
-        const editorScriptPath = join(workDir, "editor.sh");
-        await writeFile(editorScriptPath, scriptLines.join("\n") + "\n", "utf-8");
-        await chmod(editorScriptPath, 0o755);
-        env.GIT_EDITOR = editorScriptPath;
+        // Use node script instead of bash to avoid shell injection from reword messages
+        const rewordScriptPath = join(workDir, "editor.mjs");
+        const rewordScript = [
+          "import { readFileSync, writeFileSync } from 'fs';",
+          "import { join } from 'path';",
+          "const commitMsgFile = process.argv[1];",
+          `const rewordDir = ${JSON.stringify(rewordDir)};`,
+          `const counterPath = ${JSON.stringify(counterPath)};`,
+          "const index = parseInt(readFileSync(counterPath, 'utf-8').trim(), 10);",
+          "const msg = readFileSync(join(rewordDir, `${index}.txt`), 'utf-8');",
+          "writeFileSync(commitMsgFile, msg, 'utf-8');",
+          "writeFileSync(counterPath, String(index + 1), 'utf-8');",
+        ].join("\n");
+        await writeFile(rewordScriptPath, rewordScript, { mode: 0o600, encoding: "utf-8" });
+        env.GIT_EDITOR = `node ${rewordScriptPath}`;
       }
 
-      const result = await gitInRepo(resolvedRepo, ["rebase", "--interactive", "--", baseCommit], env);
+      const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["rebase", "--interactive", "--", baseCommit], env));
 
       if (result.exitCode !== 0) {
         const hasConflicts = result.stderr.includes("CONFLICT") || result.stderr.includes("could not apply");
-        await gitInRepo(resolvedRepo, ["rebase", "--abort"]).catch((err) => {
+        await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["rebase", "--abort"])).catch((err) => {
           console.warn("[quanta-control] Failed to abort rebase:", err);
         });
 
@@ -702,7 +731,7 @@ router.post("/rebase-abort", async (req, res, next) => {
     if (!repo) return res.status(400).json({ error: "repo path required" });
     const resolvedRepo = await validateGitRepo(repo);
 
-    const result = await gitInRepo(resolvedRepo, ["rebase", "--abort"]);
+    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["rebase", "--abort"]));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -763,7 +792,7 @@ router.post("/tag-create", async (req, res, next) => {
     args.push("--", name);
     if (ref) { assertSafeRef(ref, "ref"); args.push("--", ref); }
 
-    const result = await gitInRepo(resolvedRepo, args);
+    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -781,7 +810,7 @@ router.post("/tag-delete", async (req, res, next) => {
     assertSafeRef(name, "tag name");
     const resolvedRepo = await validateGitRepo(repo);
 
-    const result = await gitInRepo(resolvedRepo, ["tag", "-d", "--", name]);
+    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["tag", "-d", "--", name]));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -801,10 +830,10 @@ router.post("/cherry-pick", async (req, res, next) => {
     assertSafeRef(commit, "commit hash");
     const resolvedRepo = await validateGitRepo(repo);
 
-    const result = await gitInRepo(resolvedRepo, ["cherry-pick", "--", commit]);
+    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["cherry-pick", "--", commit]));
     if (result.exitCode !== 0) {
       // Auto-abort on conflict so we don't leave the repo in a bad state
-      await gitInRepo(resolvedRepo, ["cherry-pick", "--abort"]).catch((err) => {
+      await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["cherry-pick", "--abort"])).catch((err) => {
         console.warn("[quanta-control] Failed to abort cherry-pick:", err);
       });
       return res.status(500).json({ error: result.stderr || "Cherry-pick failed" });

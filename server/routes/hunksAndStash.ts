@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { gitInRepo, git } from "../services/gitExecutor.js";
 import { validateGitRepo, assertSafeRef } from "../utils/validation.js";
+import { withRepoLock } from "../utils/gitRouteHelpers.js";
 
 const router = Router();
 
@@ -35,7 +36,7 @@ router.post("/apply-hunk", async (req, res, next) => {
     const patch = headerLines.join("\n");
 
     const args = reverse ? ["apply", "-R", "--cached"] : ["apply", "--cached"];
-    const result = await git(args, { cwd: resolvedRepo, input: patch });
+    const result = await withRepoLock(resolvedRepo, () => git(args, { cwd: resolvedRepo, input: patch }));
 
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
@@ -87,7 +88,7 @@ router.post("/stash-apply", async (req, res, next) => {
     assertSafeRef(name, "stash name");
     const resolvedRepo = await validateGitRepo(repo);
 
-    const result = await gitInRepo(resolvedRepo, ["stash", "apply", "--", name]);
+    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["stash", "apply", "--", name]));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -104,7 +105,7 @@ router.post("/stash-pop", async (req, res, next) => {
     assertSafeRef(name, "stash name");
     const resolvedRepo = await validateGitRepo(repo);
 
-    const result = await gitInRepo(resolvedRepo, ["stash", "pop", "--", name]);
+    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["stash", "pop", "--", name]));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }
@@ -121,7 +122,7 @@ router.post("/stash-drop", async (req, res, next) => {
     assertSafeRef(name, "stash name");
     const resolvedRepo = await validateGitRepo(repo);
 
-    const result = await gitInRepo(resolvedRepo, ["stash", "drop", "--", name]);
+    const result = await withRepoLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["stash", "drop", "--", name]));
     if (result.exitCode !== 0) {
       return res.status(500).json({ error: result.stderr });
     }

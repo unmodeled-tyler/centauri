@@ -28,9 +28,12 @@ export function assertSafeRef(value: string, label: string) {
   if (value.startsWith("-")) {
     throw createHttpError(400, `${label} must not start with "-"`);
   }
-  // Block common shell/command injection characters
-  if (/[;&|`$(){}[\]\n\r]/.test(value)) {
+  // Allowlist approach: only alphanumeric, /, ., _, -, @, and space
+  if (!/^[a-zA-Z0-9/_.@ -]+$/.test(value)) {
     throw createHttpError(400, `${label} contains invalid characters`);
+  }
+  if (value.length > 256) {
+    throw createHttpError(400, `${label} is too long (max 256 characters)`);
   }
 }
 

@@ -10,6 +10,8 @@ const LOG_FORMAT = `--format=%H|%h|%an|%ae|%ad|%s|%P|%D`;
 
 const router = Router();
 
+const MAX_BLAME_LINES = 10000;
+
 // ── File tree ──
 
 router.get("/tree", async (req, res, next) => {
@@ -60,6 +62,7 @@ router.get("/blame", async (req, res, next) => {
       return res.status(500).json({ error: result.stderr });
     }
 
+    let truncated = false;
     const lines: BlameLine[] = [];
 
     let currentHash = "";
@@ -73,6 +76,10 @@ router.get("/blame", async (req, res, next) => {
       if (raw.startsWith("\t")) {
         // Content line
         lineNumber += 1;
+        if (lineNumber > MAX_BLAME_LINES) {
+          truncated = true;
+          break;
+        }
         lines.push({
           hash: currentHash,
           shortHash: currentHash.slice(0, 7),
@@ -109,7 +116,7 @@ router.get("/blame", async (req, res, next) => {
       }
     }
 
-    res.json({ lines });
+    res.json({ lines, truncated });
   } catch (err) {
     next(err);
   }

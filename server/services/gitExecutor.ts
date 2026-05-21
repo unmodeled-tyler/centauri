@@ -64,6 +64,15 @@ export interface GitExecResult {
   exitCode: number;
 }
 
+const MAX_STDOUT_CHARS = 5 * 1024 * 1024; // Truncate individual command output at 5M chars
+
+function truncateStdout(stdout: string): string {
+  if (stdout.length > MAX_STDOUT_CHARS) {
+    return stdout.slice(0, MAX_STDOUT_CHARS) + "\n[output truncated due to size]";
+  }
+  return stdout;
+}
+
 export async function git(
   args: string[],
   options: GitExecOptions = {},
@@ -85,7 +94,7 @@ export async function git(
 
         child.stdout.setEncoding("utf-8");
         child.stderr.setEncoding("utf-8");
-        child.stdout.on("data", (data) => { stdout += data; });
+        child.stdout.on("data", (data) => { if (stdout.length < MAX_STDOUT_CHARS) stdout += data; });
         child.stderr.on("data", (data) => { stderr += data; });
 
         child.on("error", (err: unknown) => {
@@ -97,7 +106,7 @@ export async function git(
         });
 
         child.on("close", (code) => {
-          resolve({ stdout, stderr, exitCode: code ?? 0 });
+          resolve({ stdout: truncateStdout(stdout), stderr, exitCode: code ?? 0 });
         });
 
         child.stdin.end(input);
@@ -111,13 +120,13 @@ export async function git(
         maxBuffer,
         encoding: "utf-8",
       });
-      return { stdout: stdout || "", stderr: stderr || "", exitCode: 0 };
+      return { stdout: truncateStdout(stdout || ""), stderr: stderr || "", exitCode: 0 };
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         throw new Error("git is not installed or not in PATH");
       }
       return {
-        stdout: (err as { stdout?: string }).stdout || "",
+        stdout: truncateStdout((err as { stdout?: string }).stdout || ""),
         stderr: (err as { stderr?: string }).stderr || (err as Error).message || "",
         exitCode: (err as { status?: number }).status ?? 1,
       };

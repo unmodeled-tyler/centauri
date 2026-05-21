@@ -32,3 +32,25 @@ export function parseGitLineMatches(stdout: string): LineMatch[] {
 
   return matches;
 }
+
+// ── Per-repo operation mutex ──────────────────────────────────────────────
+
+const repoQueues = new Map<string, Promise<unknown>>();
+
+/**
+ * Serializes async operations per repo so concurrent mutations don't conflict.
+ * Uses a chain of promises so operations run in order but don't block each other
+ * across different repos.
+ */
+export function withRepoLock<T>(repoPath: string, fn: () => Promise<T>): Promise<T> {
+  const prev = repoQueues.get(repoPath) ?? Promise.resolve();
+  const next = prev.then(() => fn(), () => fn());
+  repoQueues.set(repoPath, next);
+  // Clean up old entries after they resolve
+  next.catch(() => {}).then(() => {
+    if (repoQueues.get(repoPath) === next) {
+      repoQueues.delete(repoPath);
+    }
+  });
+  return next as Promise<T>;
+}
