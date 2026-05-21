@@ -55,6 +55,18 @@ export function assertSafeRef(value: string, label: string) {
   }
 }
 
+export function assertSafePath(value: string, label: string) {
+  if (value.startsWith("/") || value.includes("\0")) {
+    throw createHttpError(400, `${label} is invalid`);
+  }
+  if (value.split("/").includes("..")) {
+    throw createHttpError(400, `${label} must not contain parent directory segments`);
+  }
+  if (value.length > 1024) {
+    throw createHttpError(400, `${label} is too long (max 1024 characters)`);
+  }
+}
+
 export function assertSafeArray(value: unknown, label: string): string[] {
   if (!Array.isArray(value)) {
     throw createHttpError(400, `${label} must be an array`);

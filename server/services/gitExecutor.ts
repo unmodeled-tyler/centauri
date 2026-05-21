@@ -24,13 +24,14 @@ export async function withRetry<T>(
     try {
       return await fn();
     } catch (err: unknown) {
+      const exitCode = (err as { status?: number }).status;
       const isRetryable =
-        err instanceof Error &&
+        (err instanceof Error &&
         (err.message.includes("file locked") ||
           err.message.includes("Permission denied") ||
           err.message.includes("unable to index") ||
-          err.message.includes("objects")) ||
-        retryOnExitCode.length > 0;
+          err.message.includes("objects"))) ||
+        (retryOnExitCode.length > 0 && typeof exitCode === "number" && retryOnExitCode.includes(exitCode));
 
       if (attempt >= retries || !isRetryable) throw err;
 

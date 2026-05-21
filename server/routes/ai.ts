@@ -4,6 +4,7 @@ import { isIPv4, isIPv6 } from "net";
 import { URL } from "url";
 import { promisify } from "util";
 import { gitInRepo } from "../services/gitExecutor.js";
+import { validateGitRepo, createHttpError } from "../utils/validation.js";
 
 const router = Router();
 
@@ -47,10 +48,6 @@ function scrubSecrets(value: string): string {
     });
   }
   return result;
-}
-
-function createHttpError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
 }
 
 function isPrivateIp(ip: string): boolean {
@@ -425,9 +422,11 @@ router.post("/generate-commit-message", async (req, res, next) => {
       return res.status(400).json({ error: "AI endpoint and model are required" });
     }
 
+    const resolvedRepo = await validateGitRepo(repo);
+
     await validateEndpoint(endpoint);
 
-    const changeContext = await buildCommitMessageContext(repo);
+    const changeContext = await buildCommitMessageContext(resolvedRepo);
     const payload = JSON.stringify({
       model,
       stream: false,

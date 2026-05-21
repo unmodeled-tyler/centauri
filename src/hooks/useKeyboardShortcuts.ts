@@ -72,16 +72,16 @@ export function useKeyboardShortcuts({
       const file = meta.status?.files.find((f) => f.path === meta.selectedFile!.path);
       if (!file) return;
       if (file.stagedStatus === "staged" || file.stagedStatus === "partially_staged") {
-        void api.unstageFiles(meta.repoPath!, [file.path]).then(() => meta.refresh());
+        void api.unstageFiles(meta.repoPath!, [file.path]).then(() => meta.refresh()).catch(() => {});
       } else {
-        void api.stageFiles(meta.repoPath!, [file.path]).then(() => meta.refresh());
+        void api.stageFiles(meta.repoPath!, [file.path]).then(() => meta.refresh()).catch(() => {});
       }
       return;
     }
 
     if (e.key === "u" || e.key === "U") {
       e.preventDefault();
-      void api.unstageFiles(meta.repoPath!, [meta.selectedFile.path]).then(() => meta.refresh());
+      void api.unstageFiles(meta.repoPath!, [meta.selectedFile.path]).then(() => meta.refresh()).catch(() => {});
       return;
     }
 
@@ -94,7 +94,7 @@ export function useKeyboardShortcuts({
       void api.discardChanges(meta.repoPath!, [meta.selectedFile.path]).then(() => {
         meta.refresh();
         meta.onSelectFile(null);
-      });
+      }).catch(() => {});
     }
   }, []);
 

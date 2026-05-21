@@ -57,13 +57,14 @@ export function withRepoLock<T>(repoPath: string, fn: () => Promise<T>): Promise
   });
 
   // Timeout wrapper
+  let timerId: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_resolve, reject) => {
-    setTimeout(() => {
+    timerId = setTimeout(() => {
       reject(Object.assign(new Error(`Repo lock timed out after ${REPO_LOCK_TIMEOUT_MS}ms`), { status: 504 }));
     }, REPO_LOCK_TIMEOUT_MS);
   });
 
-  return Promise.race([next as Promise<T>, timeout]);
+  return Promise.race([next as Promise<T>, timeout]).finally(() => clearTimeout(timerId!));
 }
 
 // ── Global concurrency limit for git operations ────────────────────────────

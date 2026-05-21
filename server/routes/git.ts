@@ -4,7 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { gitInRepo } from "../services/gitExecutor.js";
-import { validateGitRepo, assertSafeRef, assertSafeArray } from "../utils/validation.js";
+import { validateGitRepo, assertSafeRef, assertSafeArray, createHttpError } from "../utils/validation.js";
 import { cachedGitCall, cachedStatsCall, invalidateCache } from "../utils/simpleCache.js";
 import { withRepoLock, withGitConcurrencyLimit } from "../utils/gitRouteHelpers.js";
 import { parseStatus, parseDiff, parseLog, parseBranches, parseRemotes, LOG_SEPARATOR } from "../services/gitParser.js";
@@ -195,7 +195,7 @@ router.post("/commit", async (req, res, next) => {
 router.get("/log", async (req, res, next) => {
   try {
     const repo = req.query.repo as string;
-    const count = parseInt(req.query.count as string) || 50;
+    const count = Math.min(parseInt(req.query.count as string) || 50, 5000);
     const branch = req.query.branch as string;
 
     if (!repo) return res.status(400).json({ error: "repo path required" });
@@ -444,7 +444,10 @@ router.post("/fetch", async (req, res, next) => {
     const resolvedRepo = await validateGitRepo(repo);
 
     const args = ["fetch"];
-    if (remote) args.push("--", remote);
+    if (remote) {
+      assertSafeRef(remote, "remote name");
+      args.push("--", remote);
+    }
 
     const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
     if (result.exitCode !== 0) {
@@ -466,11 +469,14 @@ router.post("/pull", async (req, res, next) => {
     const args = ["pull"];
     if (remote) {
       assertSafeRef(remote, "remote name");
-      args.push("--", remote);
+      args.push(remote);
     }
     if (branch) {
       assertSafeRef(branch, "branch name");
-      args.push("--", branch);
+      args.push(branch);
+    }
+    if (remote || branch) {
+      args.splice(1, 0, "--");
     }
 
     const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
@@ -494,11 +500,15 @@ router.post("/push", async (req, res, next) => {
     if (force) args.push("--force-with-lease");
     if (remote) {
       assertSafeRef(remote, "remote name");
-      args.push("--", remote);
+      args.push(remote);
     }
     if (branch) {
       assertSafeRef(branch, "branch name");
-      args.push("--", branch);
+      args.push(branch);
+    }
+    if (remote || branch) {
+      const insertIdx = force ? 2 : 1;
+      args.splice(insertIdx, 0, "--");
     }
 
     const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, args));
@@ -538,8 +548,9 @@ router.post("/discard", async (req, res, next) => {
     if (!repo) return res.status(400).json({ error: "repo path required" });
     const resolvedRepo = await validateGitRepo(repo);
 
-    if (files?.length) {
-      const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["checkout", "--", ...files]));
+    const safeFiles = assertSafeArray(files ?? [], "files");
+    if (safeFiles.length) {
+      const result = await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["checkout", "--", ...safeFiles]));
       if (result.exitCode !== 0) {
         return res.status(500).json({ error: result.stderr });
       }
@@ -582,7 +593,10 @@ router.post("/gitignore", async (req, res, next) => {
 
     await withGitLock(resolvedRepo, async () => {
       await appendFile(gitignorePath, addition, "utf-8");
-      await gitInRepo(resolvedRepo, ["rm", "--cached", "--quiet", "--", ...newPatterns.filter((p: string) => !p.endsWith("/"))]);
+      const nonDirPatterns = newPatterns.filter((p: string) => !p.endsWith("/"));
+      if (nonDirPatterns.length > 0) {
+        await gitInRepo(resolvedRepo, ["rm", "--cached", "--quiet", "--", ...nonDirPatterns]);
+      }
     }).catch((err) => {
       console.warn("[quanta-control] Failed to remove cached patterns:", err);
     });
@@ -692,9 +706,12 @@ router.post("/rebase-interactive", async (req, res, next) => {
     await chmod(workDir, 0o700);
 
     try {
+      const ALLOWED_ACTIONS = new Set(["pick", "reword", "edit", "squash", "fixup", "drop", "exec", "break", "label", "reset", "merge"]);
       const todoLines = todos.map((entry: { action: string; hash: string; message: string }) => {
-        const action = entry.action === "drop" ? "drop" : entry.action;
-        return `${action} ${entry.hash} ${entry.message}`;
+        if (!ALLOWED_ACTIONS.has(entry.action)) {
+          throw createHttpError(400, `invalid rebase action: ${entry.action}`);
+        }
+        return `${entry.action} ${entry.hash} ${entry.message}`;
       });
       const todoContent = todoLines.join("\n") + "\n";
       const todoPath = join(workDir, "git-rebase-todo");

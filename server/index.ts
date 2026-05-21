@@ -6,7 +6,7 @@ import { existsSync } from "fs";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
-import { randomBytes, randomUUID } from "crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "crypto";
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { promisify } from "util";
 import gitRoutes from "./routes/git.js";
@@ -227,22 +227,7 @@ function getMetrics() {
   };
 }
 
-// Request nonce for CSP (regenerated on every request)
 const CSP_NONCE_BYTES = 16;
-
-function createCspDirectives(nonce: string): Record<string, string[]> {
-  return {
-    defaultSrc: ["'self'"],
-    scriptSrc: ["'self'", `'nonce-${nonce}'`, "'unsafe-inline'"],
-    styleSrc: ["'self'", "'unsafe-inline'"],
-    imgSrc: ["'self'", "data:", "blob:"],
-    connectSrc: ["'self'"],
-    fontSrc: ["'self'"],
-    objectSrc: ["'none'"],
-    frameAncestors: ["'none'"],
-    upgradeInsecureRequests: [],
-  };
-}
 
 function generateNonce(): string {
   return randomBytes(CSP_NONCE_BYTES).toString("base64");
@@ -251,11 +236,25 @@ function generateNonce(): string {
 export function createApp() {
   const app = express();
 
+  app.use((_req, res, next) => {
+    const nonce = generateNonce();
+    res.locals.cspNonce = nonce;
+    res.setHeader("Content-Security-Policy", [
+      `default-src 'self'`,
+      `script-src 'self' 'nonce-${nonce}'`,
+      `style-src 'self' 'unsafe-inline'`,
+      `img-src 'self' data: blob:`,
+      `connect-src 'self'`,
+      `font-src 'self'`,
+      `object-src 'none'`,
+      `frame-ancestors 'none'`,
+    ].join("; "));
+    next();
+  });
+
   app.use(helmet({
-    contentSecurityPolicy: {
-      directives: createCspDirectives(generateNonce()),
-    },
-    crossOriginEmbedderPolicy: false, // needed for Electron/web compatibility
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
   }));
 
   app.use(cors({
@@ -286,7 +285,8 @@ export function createApp() {
 
   // Request ID + timing middleware
   app.use((req, _res, next) => {
-    const requestId = (req.headers["x-request-id"] as string) ?? randomUUID();
+    const rawRequestId = req.headers["x-request-id"];
+    const requestId = typeof rawRequestId === "string" ? rawRequestId.slice(0, 256) : randomUUID();
     req.headers["x-request-id"] = requestId;
     const start = Date.now();
     _res.on("finish", () => {
@@ -314,16 +314,23 @@ export function createApp() {
   });
   app.use("/api", apiLimiter);
 
-  // Token-based auth: reject requests missing the secret header or query param
+  const ALWAYS_OPEN_PATHS = new Set(["/health", "/token", "/csrf-token", "/sse-token"]);
+
+// Token-based auth: reject requests missing the secret header or query param
   app.use("/api", (req, _res, next) => {
     const requestId = (req.headers["x-request-id"] as string) ?? "unknown";
-    // Health, token, csrf-token and sse-token endpoints are always accessible
-    const alwaysOpen = ["/health", "/token", "/csrf-token", "/sse-token"];
-    if (alwaysOpen.includes(req.path)) return next();
+    if (ALWAYS_OPEN_PATHS.has(req.path)) return next();
 
     const headerToken = req.headers["x-quanta-token"];
     const queryToken = req.query.token;
-    if (headerToken === authToken || queryToken === authToken) {
+    const safeCompare = (candidate: unknown): boolean => {
+      if (typeof candidate !== "string") return false;
+      const candidateBuf = Buffer.from(candidate);
+      const authBuf = Buffer.from(authToken);
+      if (candidateBuf.length !== authBuf.length) return false;
+      return timingSafeEqual(candidateBuf, authBuf);
+    };
+    if (safeCompare(headerToken) || safeCompare(queryToken)) {
       // For state-changing requests, also require CSRF token
       if (req.method !== "GET" && req.method !== "HEAD") {
         const csrfHeader = req.headers["x-csrf-token"];
@@ -412,15 +419,14 @@ export function createApp() {
   app.use("/api/explorer", explorerRoutes);
   app.use("/api/graph", graphRoutes);
 
-// Simple in-memory rate limiter for AI endpoints (scoped tighter than global)
-function aiRateLimit(req: express.Request, _res: express.Response, next: express.NextFunction) {
-  const key = req.ip || "unknown";
-  if (!checkRateLimit(AI_RATE_LIMITS, key, 60_000, 10)) {
-    return next(Object.assign(new Error("Too many AI requests"), { status: 429 }));
+  function aiRateLimit(req: express.Request, _res: express.Response, next: express.NextFunction) {
+    const key = req.ip || "unknown";
+    if (!checkRateLimit(AI_RATE_LIMITS, key, 60_000, 10)) {
+      return next(Object.assign(new Error("Too many AI requests"), { status: 429 }));
+    }
+    next();
   }
-  next();
-}
-app.use("/api/ai", aiRateLimit, aiRoutes);
+  app.use("/api/ai", aiRateLimit, aiRoutes);
 
   if (existsSync(clientDist)) {
     app.use(express.static(clientDist));
@@ -440,19 +446,21 @@ app.use("/api/ai", aiRateLimit, aiRoutes);
       logger.info("Shutdown signal received", { signal });
       cleanExpiredSseTokens();
 
-      server.close(async (err) => {
+      server.close((err) => {
         if (err) {
           logger.error("Server close error", { error: err.message });
         } else {
           logger.info("Server closed", { signal });
         }
-        try {
-          const { shutdownAllWatchers } = await import("./services/repoWatcher.js");
-          shutdownAllWatchers();
-          logger.info("All watchers stopped");
-        } catch (e) {
-          logger.warn("Failed to stop watchers", { error: String(e) });
-        }
+        void (async () => {
+          try {
+            const { shutdownAllWatchers } = await import("./services/repoWatcher.js");
+            shutdownAllWatchers();
+            logger.info("All watchers stopped");
+          } catch (e) {
+            logger.warn("Failed to stop watchers", { error: String(e) });
+          }
+        })();
       });
 
       setTimeout(() => {

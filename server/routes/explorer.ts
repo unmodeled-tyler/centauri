@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { gitInRepo, git } from "../services/gitExecutor.js";
-import { validateGitRepo, assertSafeRef } from "../utils/validation.js";
+import { validateGitRepo, assertSafeRef, assertSafePath } from "../utils/validation.js";
 import { cachedGitCall } from "../utils/simpleCache.js";
 import { parseLog, parseDiff } from "../services/gitParser.js";
 import type { BlameLine } from "../../src/types/git.js";
@@ -23,6 +23,7 @@ router.get("/tree", async (req, res, next) => {
     const resolvedRepo = await validateGitRepo(repoPath);
 
     const ref = (req.query.ref as string) || "HEAD";
+    assertSafeRef(ref, "ref");
 
     const result = await cachedGitCall(`tree:${resolvedRepo}:${ref}`, () =>
       gitInRepo(resolvedRepo, [
@@ -55,6 +56,7 @@ router.get("/blame", async (req, res, next) => {
       return res.status(400).json({ error: "repo and file required" });
     }
     const resolvedRepo = await validateGitRepo(repoPath);
+    assertSafePath(file, "file path");
 
     const result = await withGitConcurrencyLimit(() => git(["blame", "--porcelain", "--", file], {
       cwd: resolvedRepo,
@@ -135,6 +137,7 @@ router.get("/history", async (req, res, next) => {
       return res.status(400).json({ error: "repo and file required" });
     }
     const resolvedRepo = await validateGitRepo(repoPath);
+    assertSafePath(file, "file path");
 
     const limit = parseBoundedLimit(req.query.limit);
 
@@ -291,6 +294,7 @@ router.get("/line-history", async (req, res, next) => {
       return res.status(400).json({ error: "repo, file, and a valid line range required" });
     }
     const resolvedRepo = await validateGitRepo(repoPath);
+    assertSafePath(file, "file path");
 
     const range = `${start},${end}:${file}`;
     const limit = parseBoundedLimit(req.query.limit);

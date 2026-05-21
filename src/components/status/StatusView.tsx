@@ -71,7 +71,7 @@ function FileItem({
     {
       label: "Stage",
       icon: <Plus className="w-3.5 h-3.5" />,
-      onClick: () => api.stageFiles(repoPath, [file.path]).then(onAction),
+      onClick: () => { api.stageFiles(repoPath, [file.path]).then(onAction).catch(() => {}); },
     },
     {
       label: "Discard Changes",
@@ -142,7 +142,7 @@ function FileItem({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                api.unstageFiles(repoPath, [file.path]).then(onAction);
+                api.unstageFiles(repoPath, [file.path]).then(onAction).catch(() => {});
               }}
               className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
               title="Unstage"
@@ -153,7 +153,7 @@ function FileItem({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                api.stageFiles(repoPath, [file.path]).then(onAction);
+                api.stageFiles(repoPath, [file.path]).then(onAction).catch(() => {});
               }}
               className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200"
               title="Stage"
@@ -192,7 +192,7 @@ function FileItem({
           danger
           onConfirm={() => {
             setConfirmDiscard(false);
-            api.discardChanges(repoPath, [file.path]).then(onAction);
+            api.discardChanges(repoPath, [file.path]).then(onAction).catch(() => {});
           }}
           onCancel={() => setConfirmDiscard(false)}
         />
@@ -270,7 +270,7 @@ export function StatusView({
             </span>
           )}
           <button
-            onClick={() => api.stageFiles(repoPath).then(refreshStatus)}
+            onClick={() => { api.stageFiles(repoPath).then(refreshStatus).catch(() => {}); }}
             className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
             title="Stage all"
           >

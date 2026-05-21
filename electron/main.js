@@ -103,7 +103,7 @@ function registerLifecycle() {
     const keyPath = join(app.getPath("userData"), "quanta-ai-key");
     try {
       const encrypted = safeStorage.encryptString(plaintext);
-      writeFileSync(keyPath, encrypted.toString("base64"), "utf-8");
+      writeFileSync(keyPath, encrypted.toString("base64"), { mode: 0o600, encoding: "utf-8" });
     } catch {
       // ignored
     }

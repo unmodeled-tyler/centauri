@@ -321,7 +321,7 @@ export default function App() {
           {view === "stashes" && <FlatView><StashView /></FlatView>}
           {view === "rebase" && <FlatView><RebaseView /></FlatView>}
           {view === "settings" && <FlatView><SettingsView /></FlatView>}
-          {view === "explorer" && <FlatView><ExplorerView initialFilePath={explorerInitialFilePath} /></FlatView>}
+          {view === "explorer" && <FlatView><ExplorerView initialFilePath={explorerInitialFilePath} onConsumed={() => setExplorerInitialFilePath(null)} /></FlatView>}
           {view === "graph" && (
             <FlatView>
               <GraphView
@@ -347,6 +347,8 @@ export default function App() {
           setConfirmDiscardPath(null);
           void api.discardChanges(repoPath!, [path]).then(() => {
             setSelectedFile(null);
+            useRepoStore.getState().refresh();
+          }).catch(() => {
             useRepoStore.getState().refresh();
           });
         }}

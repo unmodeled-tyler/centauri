@@ -25,5 +25,8 @@ export function errorHandler(
   } else {
     console.warn(JSON.stringify(errorEntry));
   }
+  if (res.headersSent) {
+    return;
+  }
   res.status(status).json({ error: message, requestId });
 }

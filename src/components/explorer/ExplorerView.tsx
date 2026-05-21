@@ -37,7 +37,7 @@ import { TagsPanel } from "./TagsPanel";
 
 type ExplorerMode = "browse" | "search" | "pickaxe" | "compare" | "todos" | "tags";
 
-export function ExplorerView({ initialFilePath }: { initialFilePath?: string | null }) {
+export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?: string | null; onConsumed?: () => void }) {
   const repoPath = useRepoStore((s) => s.repoPath);
   const refresh = useRepoStore((s) => s.refresh);
 
@@ -424,8 +424,11 @@ export function ExplorerView({ initialFilePath }: { initialFilePath?: string | n
   }, []);
 
   useEffect(() => {
-    if (initialFilePath) openFileInExplorer(initialFilePath);
-  }, [initialFilePath, openFileInExplorer]);
+    if (initialFilePath) {
+      openFileInExplorer(initialFilePath);
+      onConsumed?.();
+    }
+  }, [initialFilePath, openFileInExplorer, onConsumed]);
 
   if (!repoPath) {
     return (
