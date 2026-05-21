@@ -227,6 +227,27 @@ function getMetrics() {
   };
 }
 
+// Request nonce for CSP (regenerated on every request)
+const CSP_NONCE_BYTES = 16;
+
+function createCspDirectives(nonce: string): Record<string, string[]> {
+  return {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'", `'nonce-${nonce}'`, "'unsafe-inline'"],
+    styleSrc: ["'self'", "'unsafe-inline'"],
+    imgSrc: ["'self'", "data:", "blob:"],
+    connectSrc: ["'self'"],
+    fontSrc: ["'self'"],
+    objectSrc: ["'none'"],
+    frameAncestors: ["'none'"],
+    upgradeInsecureRequests: [],
+  };
+}
+
+function generateNonce(): string {
+  return randomBytes(CSP_NONCE_BYTES).toString("base64");
+}
+
 export function createApp() {
   const app = express();
 
@@ -251,26 +272,6 @@ export function createApp() {
   // Body parsing with size limits to prevent DoS via oversized payloads
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: false, limit: "1mb" }));
-  // Request nonce for CSP (regenerated on every request)
-const CSP_NONCE_BYTES = 16;
-
-function createCspDirectives(nonce: string): Record<string, string[]> {
-  return {
-    defaultSrc: ["'self'"],
-    scriptSrc: ["'self'", `'nonce-${nonce}'`, "'unsafe-inline'"],
-    styleSrc: ["'self'", "'unsafe-inline'"],
-    imgSrc: ["'self'", "data:", "blob:"],
-    connectSrc: ["'self'"],
-    fontSrc: ["'self'"],
-    objectSrc: ["'none'"],
-    frameAncestors: ["'none'"],
-    upgradeInsecureRequests: [],
-  };
-}
-
-function generateNonce(): string {
-  return randomBytes(CSP_NONCE_BYTES).toString("base64");
-}
 
   // Validate Content-Type on state-changing requests to prevent CSRF via content-type mismatch
   app.use("/api", (req, _res, next) => {
