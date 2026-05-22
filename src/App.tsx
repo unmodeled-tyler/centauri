@@ -25,9 +25,7 @@ import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import * as api from "./services/api";
 import { loadRecentRepos } from "./utils/recentRepos";
 
-const STATUS_PANEL_WIDTH_KEY = "quanta-layout-status-width";
 const BRANCH_PANEL_WIDTH_KEY = "quanta-layout-branch-width";
-const COMMIT_PANEL_HEIGHT_KEY = "quanta-layout-commit-height";
 
 function loadStoredNumber(key: string, fallback: number) {
   try {
@@ -44,11 +42,7 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-type DragState =
-  | { kind: "statusWidth"; startPointer: number; startSize: number }
-  | { kind: "branchWidth"; startPointer: number; startSize: number }
-  | { kind: "commitHeight"; startPointer: number; startSize: number }
-  | null;
+type DragState = { kind: "branchWidth"; startPointer: number; startSize: number } | null;
 
 export default function App() {
   const repoPath = useRepoStore((s) => s.repoPath);
@@ -57,12 +51,10 @@ export default function App() {
   const lastStatusUpdateAt = useRepoStore((s) => s.lastStatusUpdateAt);
   const settings = useSettingsStore((s) => s.settings);
   const [view, setView] = useState<View>("status");
-  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [agentPanelOpen, setAgentPanelOpen] = useState(true);
   const [selectedFile, setSelectedFile] = useState<GitFile | null>(null);
   const [explorerInitialFilePath, setExplorerInitialFilePath] = useState<string | null>(null);
-  const [statusPanelWidth, setStatusPanelWidth] = useState(() => loadStoredNumber(STATUS_PANEL_WIDTH_KEY, 320));
   const [branchPanelWidth, setBranchPanelWidth] = useState(() => loadStoredNumber(BRANCH_PANEL_WIDTH_KEY, 384));
-  const [commitPanelHeight, setCommitPanelHeight] = useState(() => loadStoredNumber(COMMIT_PANEL_HEIGHT_KEY, 180));
   const [dragState, setDragState] = useState<DragState>(null);
   const [confirmDiscardPath, setConfirmDiscardPath] = useState<string | null>(null);
 
@@ -110,32 +102,12 @@ export default function App() {
     if (!dragState) return;
 
     const handlePointerMove = (event: PointerEvent) => {
-      if (dragState.kind === "statusWidth") {
-        const nextWidth = clamp(
-          dragState.startSize + (event.clientX - dragState.startPointer),
-          240,
-          640,
-        );
-        setStatusPanelWidth(nextWidth);
-        return;
-      }
-
-      if (dragState.kind === "branchWidth") {
-        const nextWidth = clamp(
-          dragState.startSize + (event.clientX - dragState.startPointer),
-          280,
-          720,
-        );
-        setBranchPanelWidth(nextWidth);
-        return;
-      }
-
-      const nextHeight = clamp(
-        dragState.startSize - (event.clientY - dragState.startPointer),
-        140,
-        420,
+      const nextWidth = clamp(
+        dragState.startSize + (event.clientX - dragState.startPointer),
+        280,
+        720,
       );
-      setCommitPanelHeight(nextHeight);
+      setBranchPanelWidth(nextWidth);
     };
 
     const handlePointerUp = () => setDragState(null);
@@ -151,11 +123,9 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STATUS_PANEL_WIDTH_KEY, String(statusPanelWidth));
       localStorage.setItem(BRANCH_PANEL_WIDTH_KEY, String(branchPanelWidth));
-      localStorage.setItem(COMMIT_PANEL_HEIGHT_KEY, String(commitPanelHeight));
     } catch {}
-  }, [statusPanelWidth, branchPanelWidth, commitPanelHeight]);
+  }, [branchPanelWidth]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI) return;
@@ -232,63 +202,22 @@ export default function App() {
         <div className="flex-1 flex overflow-hidden">
           <div className="min-w-0 flex-1 flex overflow-hidden">
           {view === "status" && (
-            <>
-              <div
-                className="flex-shrink-0 overflow-y-auto border-r border-zinc-800"
-                style={{ width: statusPanelWidth }}
-              >
-                <ErrorBoundary><StatusView
-                  onSelectFile={(file) => {
-                    setSelectedFile(file);
-                    setView("diff");
-                  }}
-                  selectedFile={selectedFile}
-                /></ErrorBoundary>
+            <FlatView>
+              <div className="flex h-full flex-col border-r border-zinc-800/60 bg-zinc-950/40">
+                <div className="min-h-0 flex-1">
+                  <ErrorBoundary><StatusView
+                    onSelectFile={(file) => {
+                      setSelectedFile(file);
+                      setView("diff");
+                    }}
+                    selectedFile={selectedFile}
+                  /></ErrorBoundary>
+                </div>
+                <div className="flex-shrink-0 border-t border-zinc-800/60">
+                  <ErrorBoundary><CommitPanel onCommitted={() => setSelectedFile(null)} /></ErrorBoundary>
+                </div>
               </div>
-              <ResizeHandle
-                orientation="vertical"
-                onPointerDown={(event) =>
-                  setDragState({
-                    kind: "statusWidth",
-                    startPointer: event.clientX,
-                    startSize: statusPanelWidth,
-                  })
-                }
-              />
-              <div className="flex min-w-0 flex-1 flex-col">
-                {status?.files.length === 0 ? (
-                  <CleanWorkspace />
-                ) : (
-                  <>
-                    <div className="min-h-0 flex-1">
-                      <ErrorBoundary><DiffViewer
-                        repoPath={repoPath}
-                        filePath={selectedFile?.path ?? null}
-                        showAllWhenNoFile={false}
-                        emptyStateMessage="Select a changed file to inspect its diff"
-                        refreshKey={lastStatusUpdateAt}
-                      /></ErrorBoundary>
-                    </div>
-                    <ResizeHandle
-                      orientation="horizontal"
-                      onPointerDown={(event) =>
-                        setDragState({
-                          kind: "commitHeight",
-                          startPointer: event.clientY,
-                          startSize: commitPanelHeight,
-                        })
-                      }
-                    />
-                    <div
-                      className="flex-shrink-0 overflow-y-auto"
-                      style={{ height: commitPanelHeight }}
-                    >
-                      <ErrorBoundary><CommitPanel onCommitted={() => setSelectedFile(null)} /></ErrorBoundary>
-                    </div>
-                  </>
-                )}
-              </div>
-            </>
+            </FlatView>
           )}
 
           {view === "diff" && (
@@ -344,7 +273,7 @@ export default function App() {
           </div>
 
           {agentPanelOpen && (
-            <aside className="min-w-[360px] max-w-[760px] basis-[42%] border-l border-zinc-800/80 bg-zinc-950 shadow-2xl shadow-black/30">
+            <aside className="min-w-[420px] max-w-[860px] basis-1/2 border-l border-zinc-800/80 bg-zinc-950 shadow-2xl shadow-black/30">
               <ErrorBoundary><AgentTerminalView /></ErrorBoundary>
             </aside>
           )}
@@ -402,18 +331,6 @@ function ResizeHandle({
   );
 }
 
-function CleanWorkspace() {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 px-6 py-5 text-center shadow-lg shadow-black/10">
-        <div className="text-sm font-medium text-zinc-200">Working tree is clean</div>
-        <div className="mt-1 text-xs text-zinc-500">
-          No local changes to review right now. This view will repopulate when new edits land.
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function FlatView({ children }: { children: React.ReactNode }) {
   return (

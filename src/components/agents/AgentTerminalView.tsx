@@ -211,24 +211,30 @@ export function AgentTerminalView() {
           <div className="space-y-2">
             {loadingTools ? (
               <div className="text-xs text-zinc-500">Scanning PATH…</div>
-            ) : tools.map((tool) => (
+            ) : availableTools.length === 0 ? (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 px-3 py-3 text-xs leading-5 text-zinc-500">
+                No supported agent CLIs were detected on PATH. Install one and hit Detect.
+              </div>
+            ) : availableTools.map((tool) => (
               <button
                 key={tool.id}
-                onClick={() => tool.available && !connectedTool && setSelectedTool(tool.id)}
-                disabled={!tool.available || Boolean(connectedTool)}
+                onClick={() => !connectedTool && setSelectedTool(tool.id)}
+                disabled={Boolean(connectedTool)}
                 className={`w-full rounded-lg border px-3 py-2 text-left transition ${
                   selectedTool === tool.id
                     ? "border-emerald-500/50 bg-emerald-500/10"
                     : "border-zinc-800 bg-zinc-900/30 hover:border-zinc-700"
-                } ${!tool.available ? "opacity-45" : ""}`}
+                }`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium text-zinc-200">{tool.label}</span>
-                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${tool.available ? "bg-emerald-500/15 text-emerald-300" : "bg-zinc-800 text-zinc-500"}`}>
-                    {tool.available ? "found" : "missing"}
+                  <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300">
+                    ready
                   </span>
                 </div>
-                <div className="mt-1 text-xs text-zinc-500">{tool.command}</div>
+                <div className="mt-1 truncate text-xs text-zinc-500" title={tool.path ?? tool.command}>
+                  {tool.path ?? tool.command}
+                </div>
               </button>
             ))}
           </div>

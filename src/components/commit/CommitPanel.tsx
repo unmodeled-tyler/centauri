@@ -138,7 +138,7 @@ export function CommitPanel({ onCommitted }: { onCommitted: () => void }) {
   if (!repoPath || !status) return null;
 
   return (
-    <div className="h-full overflow-y-auto border-t border-zinc-800/60 bg-zinc-950/40">
+    <div className="overflow-y-auto bg-zinc-950/40">
       <div className="p-3">
         <textarea
           value={message}
@@ -176,6 +176,15 @@ export function CommitPanel({ onCommitted }: { onCommitted: () => void }) {
               <GitCommit className="w-3.5 h-3.5" />
             )}
             {hasStaged ? "Commit" : "Commit All"}
+          </button>
+          <button
+            onClick={doPush}
+            disabled={pushing || committing}
+            className="flex items-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800 px-3 py-1.5 text-sm font-medium transition-all duration-150 ease-out hover:bg-zinc-700 disabled:opacity-40 disabled:hover:bg-zinc-800"
+            title="Push current branch"
+          >
+            <Upload className={`w-3.5 h-3.5 ${pushing ? "animate-pulse" : ""}`} />
+            {pushing ? "Pushing" : "Push"}
           </button>
           <span className="text-xs text-zinc-600">
             {!hasChanges
