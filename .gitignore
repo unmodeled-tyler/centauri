@@ -31,3 +31,4 @@ test-git.mjs
 .superpowers-helpers/*
 .superpowers-config/*
 .superpowers-data/*
+assets/centauri-hero.png
