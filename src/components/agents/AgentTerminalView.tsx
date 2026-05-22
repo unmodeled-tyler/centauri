@@ -10,6 +10,7 @@ import * as api from "../../services/api";
 export function AgentTerminalView() {
   const repoPath = useRepoStore((s) => s.repoPath);
   const refreshRepo = useRepoStore((s) => s.refresh);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const terminalEl = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -65,6 +66,7 @@ export function AgentTerminalView() {
     };
 
     const observer = new ResizeObserver(fitTerminal);
+    if (panelRef.current) observer.observe(panelRef.current);
     if (terminalEl.current) observer.observe(terminalEl.current);
     window.addEventListener("resize", fitTerminal);
 
@@ -113,7 +115,7 @@ export function AgentTerminalView() {
 
       if (terminalEl.current) {
         terminal.open(terminalEl.current);
-        fit.fit();
+        window.requestAnimationFrame(() => fit.fit());
       }
 
       terminal.writeln(`Launching ${tool.label} in ${repoPath}`);
@@ -159,7 +161,7 @@ export function AgentTerminalView() {
   };
 
   return (
-    <div className="flex h-full min-w-0 flex-col overflow-hidden bg-zinc-950">
+    <div ref={panelRef} className="flex h-full min-w-0 flex-col overflow-hidden bg-zinc-950">
       <div className="min-w-0 border-b border-zinc-800/70 bg-zinc-950/90 px-4 py-3">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
@@ -172,7 +174,7 @@ export function AgentTerminalView() {
             </div>
           </div>
 
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
             <button
               onClick={() => void loadTools()}
               disabled={loadingTools || Boolean(connectedTool)}
@@ -186,7 +188,7 @@ export function AgentTerminalView() {
               value={selectedTool}
               onChange={(event) => setSelectedTool(event.target.value)}
               disabled={loadingTools || Boolean(connectedTool)}
-              className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-200 outline-none transition focus:border-emerald-500/60 disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-w-0 max-w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-200 outline-none transition focus:border-emerald-500/60 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {availableTools.length === 0 && <option value="">No agent CLIs found</option>}
               {availableTools.map((tool) => (
@@ -236,7 +238,9 @@ export function AgentTerminalView() {
             </div>
           </div>
         )}
-        <div ref={terminalEl} className="min-h-0 min-w-0 flex-1 overflow-hidden p-2" />
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden p-2">
+          <div ref={terminalEl} className="h-full min-h-0 w-full min-w-0 overflow-hidden" />
+        </div>
       </div>
     </div>
   );

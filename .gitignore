@@ -13,9 +13,7 @@ npm-debug.log*
 .agents/
 AGENTS.md
 CLAUDE.md
-.venv/
 test-results/.last-run.json
-package-lock.json
 test-git.mjs
 *.tsbuildinfo
 .gitnexus
