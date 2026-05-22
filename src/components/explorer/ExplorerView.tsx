@@ -35,7 +35,38 @@ import { TagsPanel } from "./TagsPanel";
 
 // ── Main ExplorerView ──
 
+const FILE_HISTORY_HEIGHT_KEY = "centauri-explorer-file-history-height";
+
+function loadStoredNumber(key: string, fallback: number) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
 type ExplorerMode = "browse" | "search" | "pickaxe" | "compare" | "todos" | "tags";
+
+function ResizeHandle({ onPointerDown }: { onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void }) {
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      className="group relative h-1.5 w-full flex-shrink-0 cursor-row-resize select-none"
+      role="separator"
+      aria-orientation="horizontal"
+      title="Resize file history"
+    >
+      <div className="absolute inset-0 border-y border-zinc-800/40 transition-colors group-hover:bg-emerald-500/20" />
+    </div>
+  );
+}
 
 export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?: string | null; onConsumed?: () => void }) {
   const repoPath = useRepoStore((s) => s.repoPath);
@@ -52,6 +83,8 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
 
   // Selected file
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [fileHistoryHeight, setFileHistoryHeight] = useState(() => loadStoredNumber(FILE_HISTORY_HEIGHT_KEY, 260));
+  const [historyDrag, setHistoryDrag] = useState<{ startPointer: number; startSize: number } | null>(null);
 
   // Blame
   const [blameLines, setBlameLines] = useState<BlameLine[]>([]);
@@ -173,6 +206,35 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
     void load();
     return () => { cancelled = true; };
   }, [repoPath, selectedFile]);
+
+  useEffect(() => {
+    if (!historyDrag) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const nextHeight = clamp(
+        historyDrag.startSize - (event.clientY - historyDrag.startPointer),
+        120,
+        Math.max(220, Math.floor(window.innerHeight * 0.7)),
+      );
+      setFileHistoryHeight(nextHeight);
+    };
+
+    const handlePointerUp = () => setHistoryDrag(null);
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [historyDrag]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILE_HISTORY_HEIGHT_KEY, String(fileHistoryHeight));
+    } catch {}
+  }, [fileHistoryHeight]);
 
   // ── Search ──
 
@@ -715,8 +777,9 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
                     </div>
                   )}
 
-                  {/* History (bottom half) */}
-                  <div className="h-[40%] min-h-[120px] overflow-hidden">
+                  {/* History (bottom panel) */}
+                  <ResizeHandle onPointerDown={(event) => setHistoryDrag({ startPointer: event.clientY, startSize: fileHistoryHeight })} />
+                  <div className="min-h-[120px] flex-shrink-0 overflow-hidden" style={{ height: fileHistoryHeight }}>
                     <div className="flex items-center gap-1.5 px-3 py-1 border-b border-zinc-800/30 bg-zinc-900/20">
                       <Clock className="h-3 w-3 text-zinc-500" />
                       <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-wide">File History</span>

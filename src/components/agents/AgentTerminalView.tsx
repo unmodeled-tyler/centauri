@@ -15,6 +15,16 @@ export interface AgentConnection {
 const COMMIT_MESSAGE_START = "CENTAURI_COMMIT_MESSAGE_START";
 const COMMIT_MESSAGE_END = "CENTAURI_COMMIT_MESSAGE_END";
 const AGENT_RESPONSE_TIMEOUT_MS = 120_000;
+const CODEX_YOLO_KEY = "centauri-agent-codex-yolo";
+const CLAUDE_SKIP_PERMISSIONS_KEY = "centauri-agent-claude-skip-permissions";
+
+function loadStoredBoolean(key: string) {
+  try {
+    return localStorage.getItem(key) === "true";
+  } catch {
+    return false;
+  }
+}
 
 interface PendingCommitMessageRequest {
   buffer: string;
@@ -79,6 +89,8 @@ export function AgentTerminalView({
   const [loadingTools, setLoadingTools] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [connectedTool, setConnectedTool] = useState<api.AgentTool | null>(null);
+  const [codexYolo, setCodexYolo] = useState(() => loadStoredBoolean(CODEX_YOLO_KEY));
+  const [claudeSkipPermissions, setClaudeSkipPermissions] = useState(() => loadStoredBoolean(CLAUDE_SKIP_PERMISSIONS_KEY));
   const [error, setError] = useState<string | null>(null);
 
   const availableTools = useMemo(() => tools.filter((tool) => tool.available), [tools]);
@@ -141,6 +153,13 @@ export function AgentTerminalView({
   useEffect(() => {
     void loadTools();
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CODEX_YOLO_KEY, String(codexYolo));
+      localStorage.setItem(CLAUDE_SKIP_PERMISSIONS_KEY, String(claudeSkipPermissions));
+    } catch {}
+  }, [claudeSkipPermissions, codexYolo]);
 
   useEffect(() => {
     return () => {
@@ -223,7 +242,10 @@ export function AgentTerminalView({
       terminal.writeln(`Launching ${tool.label} in ${repoPath}`);
       terminal.writeln("────────────────────────────────────────────────────────────");
 
-      const url = await api.createAgentTerminalUrl(repoPath, tool.id);
+      const url = await api.createAgentTerminalUrl(repoPath, tool.id, {
+        codexYolo: tool.id === "codex" && codexYolo,
+        claudeSkipPermissions: tool.id === "claude" && claudeSkipPermissions,
+      });
       const socket = new WebSocket(url);
       socketRef.current = socket;
 
@@ -306,6 +328,36 @@ export function AgentTerminalView({
                 <option key={tool.id} value={tool.id}>{tool.label}</option>
               ))}
             </select>
+
+            {selectedTool === "codex" && !connectedTool && (
+              <label
+                className="inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900"
+                title="Launch Codex with --dangerously-bypass-approvals-and-sandbox"
+              >
+                <input
+                  type="checkbox"
+                  checked={codexYolo}
+                  onChange={(event) => setCodexYolo(event.target.checked)}
+                  className="h-3.5 w-3.5 accent-emerald-500"
+                />
+                Yolo
+              </label>
+            )}
+
+            {selectedTool === "claude" && !connectedTool && (
+              <label
+                className="inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900"
+                title="Launch Claude Code with --dangerously-skip-permissions"
+              >
+                <input
+                  type="checkbox"
+                  checked={claudeSkipPermissions}
+                  onChange={(event) => setClaudeSkipPermissions(event.target.checked)}
+                  className="h-3.5 w-3.5 accent-emerald-500"
+                />
+                Skip Permissions
+              </label>
+            )}
 
             {connectedTool ? (
               <button

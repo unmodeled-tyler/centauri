@@ -437,9 +437,15 @@ export function getAgentCommitMessagePrompt(repo: string) {
   return api<{ prompt: string }>(`${AGENT_BASE}/commit-message-prompt?repo=${encodeURIComponent(repo)}`);
 }
 
-export async function createAgentTerminalUrl(repo: string, tool: string) {
+export async function createAgentTerminalUrl(
+  repo: string,
+  tool: string,
+  options?: { codexYolo?: boolean; claudeSkipPermissions?: boolean },
+) {
   const token = await getToken();
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const params = new URLSearchParams({ repo, tool, token });
+  if (options?.codexYolo) params.set("codexYolo", "true");
+  if (options?.claudeSkipPermissions) params.set("claudeSkipPermissions", "true");
   return `${protocol}//${window.location.host}/api/agents/terminal?${params}`;
 }

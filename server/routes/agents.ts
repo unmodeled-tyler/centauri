@@ -38,6 +38,17 @@ function resolveTool(id: string): AgentTool | undefined {
   return AGENT_TOOLS.find((tool) => tool.id === id);
 }
 
+function launchArgsForTool(toolId: string, url: URL) {
+  const args: string[] = [];
+  if (toolId === "codex" && url.searchParams.get("codexYolo") === "true") {
+    args.push("--dangerously-bypass-approvals-and-sandbox");
+  }
+  if (toolId === "claude" && url.searchParams.get("claudeSkipPermissions") === "true") {
+    args.push("--dangerously-skip-permissions");
+  }
+  return args;
+}
+
 async function commandPath(command: string): Promise<string | undefined> {
   const lookup = process.platform === "win32" ? "where" : "which";
   try {
@@ -196,11 +207,9 @@ export function setupAgentTerminal(server: Server, authToken: string) {
       return;
     }
 
-    const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "bash");
-    const command = process.platform === "win32" ? tool.command : `exec ${tool.command}`;
-    const args = process.platform === "win32" ? ["-NoLogo", "-Command", tool.command] : ["-lc", command];
+    const launchArgs = launchArgsForTool(tool.id, url);
 
-    const term = pty.spawn(shell, args, {
+    const term = pty.spawn(path, launchArgs, {
       name: "xterm-256color",
       cols: 100,
       rows: 30,
@@ -208,7 +217,7 @@ export function setupAgentTerminal(server: Server, authToken: string) {
       env: { ...process.env, TERM: "xterm-256color" },
     });
 
-    send(ws, { type: "ready", tool: tool.id, cwd: repo });
+    send(ws, { type: "ready", tool: tool.id, cwd: repo, args: launchArgs });
 
     term.onData((data) => send(ws, { type: "output", data }));
     term.onExit(({ exitCode, signal }) => {
