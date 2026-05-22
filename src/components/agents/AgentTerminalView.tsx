@@ -274,9 +274,9 @@ export function AgentTerminalView({
       });
 
       socket.addEventListener("message", (event) => {
-        const message = JSON.parse(String(event.data)) as { type: string; data?: string; message?: string; exitCode?: number; signal?: number; args?: string[] };
-        if (message.type === "ready" && Array.isArray(message.args) && message.args.length > 0) {
-          terminal.writeln(`\r\nConfirmed launch flags: ${message.args.join(" ")}\r\n`);
+        const message = JSON.parse(String(event.data)) as { type: string; data?: string; message?: string; exitCode?: number; signal?: number; args?: string[]; command?: string };
+        if (message.type === "ready" && message.command) {
+          terminal.writeln(`\r\nConfirmed launch command: ${message.command}\r\n`);
         }
         if (message.type === "output" && typeof message.data === "string") {
           terminal.write(message.data);
