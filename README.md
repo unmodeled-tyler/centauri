@@ -1,5 +1,8 @@
 # Centauri
 
+<img width="1484" height="1004" alt="centauri" src="https://github.com/user-attachments/assets/aeaa423b-89c7-498b-b815-058a6c3f34be" />
+
+
 Centauri is a local-first **Agent Development Environment (ADE)** that pairs conversational coding agents with a focused Git source-control workspace.
 
 It gives you a clean side-by-side flow:
