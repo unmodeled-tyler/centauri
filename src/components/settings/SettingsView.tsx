@@ -84,7 +84,7 @@ export function SettingsView() {
       <div className="max-w-xl mx-auto p-6 space-y-8">
         <div>
           <h2 className="text-lg font-semibold mb-1">Settings</h2>
-          <p className="text-sm text-zinc-500">Configure your Quanta Control preferences</p>
+          <p className="text-sm text-zinc-500">Configure your Centauri preferences</p>
         </div>
 
         <section>

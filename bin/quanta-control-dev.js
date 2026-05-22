@@ -13,14 +13,14 @@ const npxCommand = process.platform === "win32" ? "npx.cmd" : "npx";
 const managedChildren = [];
 
 function printHelp() {
-  console.log(`Quanta Control Dev Launcher
+  console.log(`Centauri Dev Launcher
 
 Usage:
-  quanta-control [--help]
+  centauri [--help]
 
 Behavior:
   Starts this repository's API and Vite dev servers on local ports,
-  then opens Quanta Control in a minimal Electron window.
+  then opens Centauri in a minimal Electron window.
 
 Notes:
   - This launcher is intended for local development only.
@@ -154,7 +154,7 @@ const apiPort = await findFreePort(3001);
 const clientPort = await findFreePort(5173);
 const appUrl = `http://127.0.0.1:${clientPort}`;
 
-console.log(`Starting Quanta Control from ${repoRoot}`);
+console.log(`Starting Centauri from ${repoRoot}`);
 console.log(`API server:  http://127.0.0.1:${apiPort}`);
 console.log(`App window:  ${appUrl}`);
 console.log("Press Ctrl-C to stop.");

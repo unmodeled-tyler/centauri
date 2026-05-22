@@ -513,7 +513,7 @@ export async function startServer(options?: { port?: number; host?: string }) {
   return new Promise<{ server: ReturnType<typeof app.listen>; token: string }>((resolveServer, reject) => {
     const server = app.listen(port, host, () => {
       setupAgentTerminal(server, authToken);
-      logger.info("Quanta Control server started", { host, port: String(port) });
+      logger.info("Centauri server started", { host, port: String(port) });
       setupGracefulShutdown(server);
       resolveServer({ server, token: authToken });
     });

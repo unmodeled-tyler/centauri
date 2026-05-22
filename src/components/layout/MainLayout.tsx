@@ -13,9 +13,9 @@ import {
   GitMerge,
   FolderSearch,
   Network,
-  Bot,
 } from "lucide-react";
 import { useRepoStore } from "../../stores/repoStore";
+import { CentauriMark } from "../brand/CentauriMark";
 
 export type View = "status" | "diff" | "branches" | "log" | "stats" | "stashes" | "rebase" | "settings" | "explorer" | "graph";
 
@@ -88,10 +88,10 @@ export function MainLayout({
               className={`flex items-center text-sm font-semibold text-zinc-300 ${
                 isCollapsed ? "justify-center" : "gap-2"
               }`}
-              title="Quanta Control"
+              title="Centauri"
             >
-              <GitBranch className="h-4 w-4 text-emerald-400" />
-              {!isCollapsed && <span>Quanta Control</span>}
+              <CentauriMark className="h-5 w-5" />
+              {!isCollapsed && <span>Centauri</span>}
             </div>
             <button
               onClick={toggleCollapsed}
@@ -151,7 +151,7 @@ export function MainLayout({
                 : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60"
             } ${isCollapsed ? "flex justify-center" : "flex items-center gap-2"}`}
           >
-            <Bot className="h-4 w-4 flex-shrink-0" />
+            <CentauriMark className="h-4 w-4" variant="agent" />
             {!isCollapsed && "Agents"}
           </button>
           <button

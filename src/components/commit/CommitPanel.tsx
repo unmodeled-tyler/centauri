@@ -153,18 +153,7 @@ export function CommitPanel({ onCommitted }: { onCommitted: () => void }) {
             }
           }}
         />
-        <div className="flex items-center gap-2 mt-2">
-          {settings.aiCommitMessagesEnabled && (
-            <button
-              onClick={handleGenerateMessage}
-              disabled={!hasChanges || generatingMessage}
-              title="Generate commit message"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:hover:bg-zinc-800 border border-zinc-700/80 rounded-md text-sm font-medium transition-all duration-150 ease-out"
-            >
-              <WandSparkles className={`w-3.5 h-3.5 ${generatingMessage ? "animate-pulse" : ""}`} />
-              {generatingMessage ? "Generating" : "AI Message"}
-            </button>
-          )}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <button
             onClick={handleCommit}
             disabled={!message.trim() || !hasChanges || committing}
@@ -185,6 +174,15 @@ export function CommitPanel({ onCommitted }: { onCommitted: () => void }) {
           >
             <Upload className={`w-3.5 h-3.5 ${pushing ? "animate-pulse" : ""}`} />
             {pushing ? "Pushing" : "Push"}
+          </button>
+          <button
+            onClick={handleGenerateMessage}
+            disabled={!hasChanges || generatingMessage}
+            title="Generate a best-practice commit message from the current changes"
+            className="flex items-center gap-1.5 rounded-md border border-zinc-700/80 bg-zinc-800 px-3 py-1.5 text-sm font-medium transition-all duration-150 ease-out hover:bg-zinc-700 disabled:opacity-40 disabled:hover:bg-zinc-800"
+          >
+            <WandSparkles className={`w-3.5 h-3.5 ${generatingMessage ? "animate-pulse" : ""}`} />
+            {generatingMessage ? "Generating" : "Generate Commit Message"}
           </button>
           <span className="text-xs text-zinc-600">
             {!hasChanges

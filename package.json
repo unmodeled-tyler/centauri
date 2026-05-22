@@ -1,10 +1,11 @@
 {
-  "name": "quanta-control",
+  "name": "centauri",
   "version": "0.1.0",
-  "description": "Local-first Git and GitHub control panel for working repositories.",
+  "description": "Local-first agent development environment with Git source control.",
   "license": "MIT",
   "type": "module",
   "bin": {
+    "centauri": "./bin/quanta-control.js",
     "quanta-control": "./bin/quanta-control.js"
   },
   "files": [

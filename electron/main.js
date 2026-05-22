@@ -172,7 +172,7 @@ function createWindow() {
     backgroundColor: "#09090b",
     autoHideMenuBar: true,
     show: false,
-    title: "Quanta Control",
+    title: "Centauri",
     webPreferences: {
       preload: join(here, "preload.js"),
       contextIsolation: true,
@@ -296,7 +296,7 @@ function updateTray() {
 function createTray() {
   if (tray) return;
   tray = new Tray(getTrayIcon());
-  tray.setToolTip("Quanta Control");
+  tray.setToolTip("Centauri");
   tray.setContextMenu(buildContextMenu());
 
   tray.on("click", () => {

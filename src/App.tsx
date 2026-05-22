@@ -165,11 +165,11 @@ export default function App() {
         if (result.valid) {
           setRepo(result.resolvedPath);
         } else {
-          electronAPI.notify("Quanta Control", `Not a valid repo: ${path}`);
+          electronAPI.notify("Centauri", `Not a valid repo: ${path}`);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
-        electronAPI.notify("Quanta Control", `Failed to open repo: ${message}`);
+        electronAPI.notify("Centauri", `Failed to open repo: ${message}`);
       }
     });
 
@@ -178,10 +178,10 @@ export default function App() {
       if (!current) return;
       try {
         await api.pull(current);
-        electronAPI.notify("Quanta Control", `Pulled ${current}`);
+        electronAPI.notify("Centauri", `Pulled ${current}`);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Pull failed";
-        electronAPI.notify("Quanta Control", `Pull failed: ${message}`);
+        electronAPI.notify("Centauri", `Pull failed: ${message}`);
       }
     });
 
@@ -302,7 +302,7 @@ export default function App() {
                 }
               />
               <aside
-                className="flex-shrink-0 border-l border-zinc-800/80 bg-zinc-950 shadow-2xl shadow-black/30"
+                className="min-w-0 flex-shrink-0 overflow-hidden border-l border-zinc-800/80 bg-zinc-950 shadow-2xl shadow-black/30"
                 style={{ width: agentPanelWidth }}
               >
                 <ErrorBoundary><AgentTerminalView /></ErrorBoundary>
@@ -366,7 +366,7 @@ function ResizeHandle({
 
 function FlatView({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex-1">
+    <div className="min-w-0 flex-1 overflow-hidden">
       <ErrorBoundary>{children}</ErrorBoundary>
     </div>
   );

@@ -140,7 +140,7 @@ export function SetupChecklist({
           </div>
         </div>
         <p className="mt-1 text-sm text-zinc-400">
-          Run a quick readiness check before opening a repo. Quanta Control uses
+          Run a quick readiness check before opening a repo. Centauri uses
           your local Git and GitHub setup, while app defaults live in Settings.
         </p>
       </div>
@@ -158,7 +158,7 @@ export function SetupChecklist({
           note={
             status.git.installed
               ? undefined
-              : "Install Git, then reopen Quanta Control."
+              : "Install Git, then reopen Centauri."
           }
         />
 

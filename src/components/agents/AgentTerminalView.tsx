@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Cable, Loader2, Play, RefreshCw, SquareTerminal } from "lucide-react";
+import { Cable, Loader2, Play, RefreshCw } from "lucide-react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { useRepoStore } from "../../stores/repoStore";
+import { CentauriMark } from "../brand/CentauriMark";
 import * as api from "../../services/api";
 
 export function AgentTerminalView() {
@@ -52,14 +53,26 @@ export function AgentTerminalView() {
   }, []);
 
   useEffect(() => {
-    const onResize = () => {
-      fitRef.current?.fit();
-      const term = terminalRef.current;
-      if (!term || socketRef.current?.readyState !== WebSocket.OPEN) return;
-      socketRef.current.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+    let frame = 0;
+    const fitTerminal = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        fitRef.current?.fit();
+        const term = terminalRef.current;
+        if (!term || socketRef.current?.readyState !== WebSocket.OPEN) return;
+        socketRef.current.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+      });
     };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+
+    const observer = new ResizeObserver(fitTerminal);
+    if (terminalEl.current) observer.observe(terminalEl.current);
+    window.addEventListener("resize", fitTerminal);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", fitTerminal);
+    };
   }, []);
 
   const disconnect = () => {
@@ -146,12 +159,12 @@ export function AgentTerminalView() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-zinc-950">
-      <div className="border-b border-zinc-800/70 bg-zinc-950/90 px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
+    <div className="flex h-full min-w-0 flex-col overflow-hidden bg-zinc-950">
+      <div className="min-w-0 border-b border-zinc-800/70 bg-zinc-950/90 px-4 py-3">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
-              <Bot className="h-4 w-4 text-emerald-400" />
+              <CentauriMark className="h-5 w-5" variant="agent" />
               Agent Terminal
             </div>
             <div className="mt-1 text-xs text-zinc-500">
@@ -159,7 +172,7 @@ export function AgentTerminalView() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <button
               onClick={() => void loadTools()}
               disabled={loadingTools || Boolean(connectedTool)}
@@ -205,11 +218,11 @@ export function AgentTerminalView() {
         {error && <div className="mt-2 text-xs text-red-300">{error}</div>}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {!connectedTool && !connecting && !terminalRef.current && (
           <div className="flex flex-1 items-center justify-center p-6">
             <div className="max-w-md rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 text-center shadow-lg shadow-black/20">
-              <SquareTerminal className="mx-auto h-8 w-8 text-emerald-400" />
+              <CentauriMark className="mx-auto h-10 w-10" variant="agent" />
               <div className="mt-3 text-sm font-semibold text-zinc-200">
                 {loadingTools ? "Detecting agent CLIs" : availableTools.length === 0 ? "No agent CLIs detected" : "Launch an agent CLI"}
               </div>
@@ -223,7 +236,7 @@ export function AgentTerminalView() {
             </div>
           </div>
         )}
-        <div ref={terminalEl} className="min-h-0 flex-1 overflow-hidden p-2" />
+        <div ref={terminalEl} className="min-h-0 min-w-0 flex-1 overflow-hidden p-2" />
       </div>
     </div>
   );

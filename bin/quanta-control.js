@@ -15,7 +15,7 @@ function resolveServerEntry() {
 
   const entry = candidates.find((candidate) => existsSync(candidate));
   if (!entry) {
-    console.error("Quanta Control is not built yet. Run `npm run build` first.");
+    console.error("Centauri is not built yet. Run `npm run build` first.");
     process.exit(1);
   }
 
@@ -27,11 +27,11 @@ const serverEntry = resolveServerEntry();
 const repoRoot = resolve(here, "..");
 
 function printHelp() {
-  console.log(`Quanta Control
+  console.log(`Centauri
 
 Usage:
-  quanta-control [--port <port>] [--host <host>] [--browser] [--no-open]
-  quanta-control --help
+  centauri [--port <port>] [--host <host>] [--browser] [--no-open]
+  centauri --help
 
 Options:
   --port <port>   Port to bind the local server to. Default: 4123
@@ -158,7 +158,7 @@ const resolvedPort =
   address && typeof address === "object" ? address.port : port;
 const url = `http://${host}:${resolvedPort}`;
 
-console.log(`Quanta Control is running at ${url}`);
+console.log(`Centauri is running at ${url}`);
 
 if (shouldOpen) {
   const electronLaunched = !useBrowser && launchElectron(url);

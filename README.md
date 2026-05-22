@@ -1,22 +1,22 @@
 
-# Quanta Control
+# Centauri
 
 <img width="1920" height="993" alt="image" src="https://github.com/user-attachments/assets/452673df-b0a2-4f18-9960-5fc8eeb3070e" />
 
-<img width="1484" height="1004" alt="quanta-control-1" src="https://github.com/user-attachments/assets/bd9cf9c7-edf0-4326-a56f-ed17443770b5" />
+<img width="1484" height="1004" alt="centauri-1" src="https://github.com/user-attachments/assets/bd9cf9c7-edf0-4326-a56f-ed17443770b5" />
 
 
-Quanta Control is a local-first Git workbench for people who want a focused desktop UI for day-to-day repository work without leaving the normal Git and GitHub tooling they already use.
+Centauri is a local-first Git workbench for people who want a focused desktop UI for day-to-day repository work without leaving the normal Git and GitHub tooling they already use.
 
 It runs on your machine, talks to your repositories through the system `git` executable, and gives you a clean interface for reviewing changes, committing, switching branches, checking history, and working with remotes.
 
 I initially built this project for myself as a companion to AI coding tools such as OpenCode or Codex which don't natively support git source control like IDEs such as VS Code or Zed. 
 
-Quanta Control follows the same lightweight, low-fuss philosophy employed by CLI coding tools. 
+Centauri follows the same lightweight, low-fuss philosophy employed by CLI coding tools. 
 
 ## What it does
 
-Quanta Control is built around a few common Git workflows:
+Centauri is built around a few common Git workflows:
 
 - inspect working tree changes and staged files
 - review diffs before committing
@@ -35,14 +35,14 @@ The app is intended to complement normal CLI-based development, not replace it. 
 
 ## How it works
 
-Quanta Control is not a hosted service and it does not proxy your repositories through a cloud backend.
+Centauri is not a hosted service and it does not proxy your repositories through a cloud backend.
 
 - repositories stay on your machine
 - Git operations are executed through the local `git` binary
 - GitHub access uses your normal local credentials
 - the app reads your environment and Git config rather than inventing its own auth system
 
-If you already work with `git`, `gh`, SSH remotes, or HTTPS remotes locally, Quanta Control is designed to fit into that setup.
+If you already work with `git`, `gh`, SSH remotes, or HTTPS remotes locally, Centauri is designed to fit into that setup.
 
 ## Features
 
@@ -143,15 +143,15 @@ Optional but recommended:
 Install from GitHub with:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/unmodeled-tyler/quanta-control/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/unmodeled-tyler/centauri/main/scripts/install.sh | bash
 ```
 
 The installer:
 
-- downloads the app into `~/.local/share/quanta-control`
+- downloads the app into `~/.local/share/centauri`
 - installs dependencies
 - builds the production frontend and backend
-- creates a launcher at `~/.local/bin/quanta-control`
+- creates a launcher at `~/.local/bin/centauri`
 
 If `~/.local/bin` is not already on your `PATH`, add it to your shell profile:
 
@@ -162,12 +162,12 @@ export PATH="$HOME/.local/bin:$PATH"
 Then start the app with:
 
 ```bash
-quanta-control
+centauri
 ```
 
 ## GitHub setup
 
-Quanta Control does not create or store a separate GitHub auth model. It uses the same local credentials your Git tools already use.
+Centauri does not create or store a separate GitHub auth model. It uses the same local credentials your Git tools already use.
 
 The simplest GitHub setup is:
 
@@ -183,7 +183,7 @@ If you prefer SSH or HTTPS remotes without GitHub CLI, that works too. The app's
 
 Typical flow:
 
-1. Launch `quanta-control`
+1. Launch `centauri`
 2. Check the pre-flight panel
 3. Open a local repository
 4. Review changes and diffs
@@ -224,11 +224,11 @@ Run the repo-local desktop dev launcher:
 npm run dev:cli
 ```
 
-That launcher starts the local API server and Vite client, then opens Quanta Control in a minimal Electron window for testing.
+That launcher starts the local API server and Vite client, then opens Centauri in a minimal Electron window for testing.
 
 ## Notes
 
-- Quanta Control is currently centered on local repository operations, not GitHub PR review or hosted account management.
+- Centauri is currently centered on local repository operations, not GitHub PR review or hosted account management.
 - The app depends on your system Git installation being available in `PATH`.
 - GitHub CLI is optional, but it improves first-run GitHub connectivity for most users.
 - This is really just a side project for me - I update it when I can/feel the inspo. I'm open to suggestions/PRs/etc.

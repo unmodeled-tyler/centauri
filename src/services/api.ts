@@ -55,8 +55,8 @@ function describeNetworkError(err: unknown, url: string) {
   const message = err instanceof Error ? err.message : String(err);
   if (/failed to fetch/i.test(message)) {
     return [
-      "Could not reach the local Quanta Control API.",
-      "Quit Quanta Control from the tray menu and relaunch it.",
+      "Could not reach the local Centauri API.",
+      "Quit Centauri from the tray menu and relaunch it.",
       `Request: ${url}`,
     ].join(" ");
   }
