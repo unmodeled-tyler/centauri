@@ -41,7 +41,7 @@ function resolveTool(id: string): AgentTool | undefined {
 function launchArgsForTool(toolId: string, url: URL) {
   const args: string[] = [];
   if (toolId === "codex" && url.searchParams.get("codexYolo") === "true") {
-    args.push("--dangerously-bypass-approvals-and-sandbox");
+    args.push("--yolo");
   }
   if (toolId === "claude" && url.searchParams.get("claudeSkipPermissions") === "true") {
     args.push("--dangerously-skip-permissions");

@@ -240,7 +240,7 @@ export function AgentTerminalView({
       }
 
       const launchFlags = [
-        tool.id === "codex" && codexYolo ? "--dangerously-bypass-approvals-and-sandbox" : "",
+        tool.id === "codex" && codexYolo ? "--yolo" : "",
         tool.id === "claude" && claudeSkipPermissions ? "--dangerously-skip-permissions" : "",
       ].filter(Boolean);
 
@@ -343,7 +343,7 @@ export function AgentTerminalView({
             {selectedTool === "codex" && !connectedTool && (
               <label
                 className="inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900"
-                title="Launch Codex with --dangerously-bypass-approvals-and-sandbox"
+                title="Launch Codex with --yolo"
               >
                 <input
                   type="checkbox"
