@@ -26,6 +26,7 @@ import * as api from "./services/api";
 import { loadRecentRepos } from "./utils/recentRepos";
 
 const BRANCH_PANEL_WIDTH_KEY = "quanta-layout-branch-width";
+const AGENT_PANEL_WIDTH_KEY = "quanta-layout-agent-width";
 
 function loadStoredNumber(key: string, fallback: number) {
   try {
@@ -42,7 +43,10 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-type DragState = { kind: "branchWidth"; startPointer: number; startSize: number } | null;
+type DragState =
+  | { kind: "branchWidth"; startPointer: number; startSize: number }
+  | { kind: "agentWidth"; startPointer: number; startSize: number }
+  | null;
 
 export default function App() {
   const repoPath = useRepoStore((s) => s.repoPath);
@@ -55,6 +59,7 @@ export default function App() {
   const [selectedFile, setSelectedFile] = useState<GitFile | null>(null);
   const [explorerInitialFilePath, setExplorerInitialFilePath] = useState<string | null>(null);
   const [branchPanelWidth, setBranchPanelWidth] = useState(() => loadStoredNumber(BRANCH_PANEL_WIDTH_KEY, 384));
+  const [agentPanelWidth, setAgentPanelWidth] = useState(() => loadStoredNumber(AGENT_PANEL_WIDTH_KEY, 720));
   const [dragState, setDragState] = useState<DragState>(null);
   const [confirmDiscardPath, setConfirmDiscardPath] = useState<string | null>(null);
 
@@ -102,12 +107,23 @@ export default function App() {
     if (!dragState) return;
 
     const handlePointerMove = (event: PointerEvent) => {
+      if (dragState.kind === "branchWidth") {
+        const nextWidth = clamp(
+          dragState.startSize + (event.clientX - dragState.startPointer),
+          280,
+          720,
+        );
+        setBranchPanelWidth(nextWidth);
+        return;
+      }
+
+      const maxAgentWidth = Math.max(420, window.innerWidth - 520);
       const nextWidth = clamp(
-        dragState.startSize + (event.clientX - dragState.startPointer),
-        280,
-        720,
+        dragState.startSize - (event.clientX - dragState.startPointer),
+        420,
+        Math.min(960, maxAgentWidth),
       );
-      setBranchPanelWidth(nextWidth);
+      setAgentPanelWidth(nextWidth);
     };
 
     const handlePointerUp = () => setDragState(null);
@@ -124,8 +140,9 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem(BRANCH_PANEL_WIDTH_KEY, String(branchPanelWidth));
+      localStorage.setItem(AGENT_PANEL_WIDTH_KEY, String(agentPanelWidth));
     } catch {}
-  }, [branchPanelWidth]);
+  }, [branchPanelWidth, agentPanelWidth]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI) return;
@@ -273,9 +290,24 @@ export default function App() {
           </div>
 
           {agentPanelOpen && (
-            <aside className="min-w-[420px] max-w-[860px] basis-1/2 border-l border-zinc-800/80 bg-zinc-950 shadow-2xl shadow-black/30">
-              <ErrorBoundary><AgentTerminalView /></ErrorBoundary>
-            </aside>
+            <>
+              <ResizeHandle
+                orientation="vertical"
+                onPointerDown={(event) =>
+                  setDragState({
+                    kind: "agentWidth",
+                    startPointer: event.clientX,
+                    startSize: agentPanelWidth,
+                  })
+                }
+              />
+              <aside
+                className="flex-shrink-0 border-l border-zinc-800/80 bg-zinc-950 shadow-2xl shadow-black/30"
+                style={{ width: agentPanelWidth }}
+              >
+                <ErrorBoundary><AgentTerminalView /></ErrorBoundary>
+              </aside>
+            </>
           )}
         </div>
       </div>

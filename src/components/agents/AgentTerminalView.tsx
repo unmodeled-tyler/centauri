@@ -205,55 +205,25 @@ export function AgentTerminalView() {
         {error && <div className="mt-2 text-xs text-red-300">{error}</div>}
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)]">
-        <aside className="overflow-y-auto border-r border-zinc-800/70 bg-zinc-950/60 p-3">
-          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">Detected tools</div>
-          <div className="space-y-2">
-            {loadingTools ? (
-              <div className="text-xs text-zinc-500">Scanning PATH…</div>
-            ) : availableTools.length === 0 ? (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 px-3 py-3 text-xs leading-5 text-zinc-500">
-                No supported agent CLIs were detected on PATH. Install one and hit Detect.
+      <div className="flex min-h-0 flex-1 flex-col">
+        {!connectedTool && !connecting && !terminalRef.current && (
+          <div className="flex flex-1 items-center justify-center p-6">
+            <div className="max-w-md rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 text-center shadow-lg shadow-black/20">
+              <SquareTerminal className="mx-auto h-8 w-8 text-emerald-400" />
+              <div className="mt-3 text-sm font-semibold text-zinc-200">
+                {loadingTools ? "Detecting agent CLIs" : availableTools.length === 0 ? "No agent CLIs detected" : "Launch an agent CLI"}
               </div>
-            ) : availableTools.map((tool) => (
-              <button
-                key={tool.id}
-                onClick={() => !connectedTool && setSelectedTool(tool.id)}
-                disabled={Boolean(connectedTool)}
-                className={`w-full rounded-lg border px-3 py-2 text-left transition ${
-                  selectedTool === tool.id
-                    ? "border-emerald-500/50 bg-emerald-500/10"
-                    : "border-zinc-800 bg-zinc-900/30 hover:border-zinc-700"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-zinc-200">{tool.label}</span>
-                  <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300">
-                    ready
-                  </span>
-                </div>
-                <div className="mt-1 truncate text-xs text-zinc-500" title={tool.path ?? tool.command}>
-                  {tool.path ?? tool.command}
-                </div>
-              </button>
-            ))}
-          </div>
-        </aside>
-
-        <section className="flex min-w-0 flex-col">
-          {!connectedTool && !connecting && !terminalRef.current && (
-            <div className="flex flex-1 items-center justify-center p-6">
-              <div className="max-w-md rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 text-center shadow-lg shadow-black/20">
-                <SquareTerminal className="mx-auto h-8 w-8 text-emerald-400" />
-                <div className="mt-3 text-sm font-semibold text-zinc-200">Launch an agent CLI</div>
-                <div className="mt-1 text-xs leading-5 text-zinc-500">
-                  Quanta will attach to the selected tool through a real pseudo-terminal, with the working directory set to this repo.
-                </div>
+              <div className="mt-1 text-xs leading-5 text-zinc-500">
+                {loadingTools
+                  ? "Scanning your PATH for supported coding tools…"
+                  : availableTools.length === 0
+                    ? "Install a supported CLI and hit Detect. Missing tools stay hidden until they are ready."
+                    : "Pick a detected tool from the dropdown above and launch it in this repo."}
               </div>
             </div>
-          )}
-          <div ref={terminalEl} className="min-h-0 flex-1 overflow-hidden p-2" />
-        </section>
+          </div>
+        )}
+        <div ref={terminalEl} className="min-h-0 flex-1 overflow-hidden p-2" />
       </div>
     </div>
   );
