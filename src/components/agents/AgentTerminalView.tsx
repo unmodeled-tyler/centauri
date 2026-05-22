@@ -239,7 +239,15 @@ export function AgentTerminalView({
         window.requestAnimationFrame(() => fit.fit());
       }
 
+      const launchFlags = [
+        tool.id === "codex" && codexYolo ? "--dangerously-bypass-approvals-and-sandbox" : "",
+        tool.id === "claude" && claudeSkipPermissions ? "--dangerously-skip-permissions" : "",
+      ].filter(Boolean);
+
       terminal.writeln(`Launching ${tool.label} in ${repoPath}`);
+      if (launchFlags.length > 0) {
+        terminal.writeln(`Launch flags: ${launchFlags.join(" ")}`);
+      }
       terminal.writeln("────────────────────────────────────────────────────────────");
 
       const url = await api.createAgentTerminalUrl(repoPath, tool.id, {
@@ -266,7 +274,10 @@ export function AgentTerminalView({
       });
 
       socket.addEventListener("message", (event) => {
-        const message = JSON.parse(String(event.data)) as { type: string; data?: string; message?: string; exitCode?: number; signal?: number };
+        const message = JSON.parse(String(event.data)) as { type: string; data?: string; message?: string; exitCode?: number; signal?: number; args?: string[] };
+        if (message.type === "ready" && Array.isArray(message.args) && message.args.length > 0) {
+          terminal.writeln(`\r\nConfirmed launch flags: ${message.args.join(" ")}\r\n`);
+        }
         if (message.type === "output" && typeof message.data === "string") {
           terminal.write(message.data);
           handleAgentOutput(message.data);
