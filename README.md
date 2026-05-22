@@ -154,17 +154,7 @@ promote dev
 
 By default the action runs `npm ci`, `npm run typecheck`, and `npm run build` before pushing `dev` to `main`.
 
-## Debian release workflow
-
-The **Build deb release** GitHub Action can be run manually from the Actions tab. It:
-
-- installs dependencies with `npm ci`
-- runs typecheck and production build
-- assembles an `amd64` Debian package
-- creates or updates a GitHub release
-- uploads `centauri_<version>_amd64.deb` as a release asset
-
-The workflow accepts optional `version` and `tag` inputs. If omitted, it uses the version from `package.json` and creates a `v<version>` tag.
+## Debian release 
 
 Install or upgrade a downloaded package with:
 
