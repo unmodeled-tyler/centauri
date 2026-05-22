@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { GitCommit, Upload, Check, WandSparkles } from "lucide-react";
 import { useRepoStore } from "../../stores/repoStore";
 import { useSettingsStore } from "../../stores/settingsStore";
-import { useAgentStore } from "../../stores/agentStore";
 import * as api from "../../services/api";
 
 const BRAILLE_SPINNER_FRAMES: [string, ...string[]] = [
@@ -35,8 +34,6 @@ export function CommitPanel({ onCommitted }: { onCommitted: () => void }) {
   const [pushing, setPushing] = useState(false);
   const [dontAskAgain, setDontAskAgain] = useState(false);
   const pushYesRef = useRef<HTMLButtonElement>(null);
-  const connectedAgent = useAgentStore((s) => s.connectedTool);
-  const sendAgentPrompt = useAgentStore((s) => s.sendPrompt);
   const hasChanges = (status?.files.length ?? 0) > 0;
   const hasStaged =
     status?.files.some(
@@ -109,9 +106,11 @@ export function CommitPanel({ onCommitted }: { onCommitted: () => void }) {
   const handleGenerateMessage = async () => {
     if (!repoPath || !hasChanges || generatingMessage) return;
 
-    if (!connectedAgent || !sendAgentPrompt) {
+    const endpoint = settings.aiCommitEndpoint.trim();
+    const model = settings.aiCommitModel.trim();
+    if (!endpoint || !model) {
       setGenerationNotice("");
-      setGenerationError("Connect an agent CLI in the Agent Terminal, then try again.");
+      setGenerationError("Configure an OpenAI-compatible endpoint and model in Settings, then try again.");
       return;
     }
 
@@ -119,11 +118,15 @@ export function CommitPanel({ onCommitted }: { onCommitted: () => void }) {
     setGenerationError("");
     setGenerationNotice("");
     try {
-      const { prompt } = await api.getAgentCommitMessagePrompt(repoPath);
-      sendAgentPrompt(prompt);
-      setGenerationNotice(`Sent commit-message request to ${connectedAgent.label}. Copy its response into the commit box when ready.`);
+      const result = await api.generateCommitMessage(repoPath, {
+        endpoint,
+        model,
+        apiKey: settings.aiCommitApiKey.trim() || undefined,
+      });
+      setMessage(result.message.trim());
+      setGenerationNotice("Generated commit message. Review it, then commit when ready.");
     } catch (err) {
-      setGenerationError(err instanceof Error ? err.message : "Could not send commit-message request to the agent.");
+      setGenerationError(err instanceof Error ? err.message : "Could not generate a commit message.");
     } finally {
       setGeneratingMessage(false);
     }
@@ -139,7 +142,7 @@ export function CommitPanel({ onCommitted }: { onCommitted: () => void }) {
   if (!repoPath || !status) return null;
 
   return (
-    <div className="overflow-y-auto bg-zinc-950/40">
+    <div className="relative overflow-y-auto bg-zinc-950/40">
       <div className="p-3">
         <textarea
           value={message}
@@ -217,20 +220,18 @@ export function CommitPanel({ onCommitted }: { onCommitted: () => void }) {
           document.body,
         )}
 
-      {generatingMessage &&
-        createPortal(
-          <CommitMessageGenerationOverlay
-            frame={BRAILLE_SPINNER_FRAMES[spinnerFrame] ?? BRAILLE_SPINNER_FRAMES[0]}
-          />,
-          document.body,
-        )}
+      {generatingMessage && (
+        <CommitMessageGenerationOverlay
+          frame={BRAILLE_SPINNER_FRAMES[spinnerFrame] ?? BRAILLE_SPINNER_FRAMES[0]}
+        />
+      )}
     </div>
   );
 }
 
 function CommitMessageGenerationOverlay({ frame }: { frame: string }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/55 backdrop-blur-[2px]">
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-950/70 backdrop-blur-[2px]">
       <div
         className="flex min-w-[220px] flex-col items-center gap-3 rounded-lg border border-emerald-500/20 bg-zinc-950/90 px-6 py-5 shadow-2xl shadow-black/50"
         role="status"

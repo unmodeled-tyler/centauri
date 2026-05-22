@@ -4,11 +4,68 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { useRepoStore } from "../../stores/repoStore";
-import { useAgentStore } from "../../stores/agentStore";
 import { CentauriMark } from "../brand/CentauriMark";
 import * as api from "../../services/api";
 
-export function AgentTerminalView() {
+export interface AgentConnection {
+  tool: api.AgentTool;
+  generateCommitMessage: (prompt: string) => Promise<string>;
+}
+
+const COMMIT_MESSAGE_START = "CENTAURI_COMMIT_MESSAGE_START";
+const COMMIT_MESSAGE_END = "CENTAURI_COMMIT_MESSAGE_END";
+const AGENT_RESPONSE_TIMEOUT_MS = 120_000;
+
+interface PendingCommitMessageRequest {
+  buffer: string;
+  resolve: (message: string) => void;
+  reject: (err: Error) => void;
+  timeoutId: number;
+}
+
+function stripAnsi(value: string) {
+  return value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+}
+
+function cleanCommitMessage(value: string) {
+  return value
+    .replace(/\r/g, "")
+    .trim()
+    .replace(/^```(?:gitcommit|text)?\s*/i, "")
+    .replace(/```$/i, "")
+    .replace(/^commit message:\s*/i, "")
+    .trim();
+}
+
+function extractCommitMessage(buffer: string) {
+  const cleaned = stripAnsi(buffer);
+  const start = cleaned.lastIndexOf(COMMIT_MESSAGE_START);
+  if (start === -1) return null;
+  const contentStart = start + COMMIT_MESSAGE_START.length;
+  const end = cleaned.indexOf(COMMIT_MESSAGE_END, contentStart);
+  if (end === -1) return null;
+  const message = cleanCommitMessage(cleaned.slice(contentStart, end));
+  return message || null;
+}
+
+function wrapCommitMessagePrompt(prompt: string) {
+  return [
+    prompt,
+    "",
+    "Important: Centauri needs to place your answer directly into the commit message box.",
+    "Print the final commit message exactly between these marker lines:",
+    COMMIT_MESSAGE_START,
+    "<commit message>",
+    COMMIT_MESSAGE_END,
+    "Do not print analysis outside the markers.",
+  ].join("\n");
+}
+
+export function AgentTerminalView({
+  onConnectionChange,
+}: {
+  onConnectionChange?: (connection: AgentConnection | null) => void;
+}) {
   const repoPath = useRepoStore((s) => s.repoPath);
   const refreshRepo = useRepoStore((s) => s.refresh);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -16,16 +73,52 @@ export function AgentTerminalView() {
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  const pendingCommitMessageRef = useRef<PendingCommitMessageRequest | null>(null);
   const [tools, setTools] = useState<api.AgentTool[]>([]);
   const [selectedTool, setSelectedTool] = useState("");
   const [loadingTools, setLoadingTools] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [connectedTool, setConnectedTool] = useState<api.AgentTool | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const setConnectedAgent = useAgentStore((s) => s.setConnectedAgent);
-  const clearConnectedAgent = useAgentStore((s) => s.clearConnectedAgent);
 
   const availableTools = useMemo(() => tools.filter((tool) => tool.available), [tools]);
+
+  const clearPendingCommitMessage = (err?: Error) => {
+    const pending = pendingCommitMessageRef.current;
+    if (!pending) return;
+    window.clearTimeout(pending.timeoutId);
+    pendingCommitMessageRef.current = null;
+    if (err) pending.reject(err);
+  };
+
+  const handleAgentOutput = (data: string) => {
+    const pending = pendingCommitMessageRef.current;
+    if (!pending) return;
+    pending.buffer += data;
+    const message = extractCommitMessage(pending.buffer);
+    if (!message) return;
+    window.clearTimeout(pending.timeoutId);
+    pendingCommitMessageRef.current = null;
+    pending.resolve(message);
+  };
+
+  const generateCommitMessageWithAgent = (prompt: string) => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error("Agent terminal is not connected."));
+    }
+
+    clearPendingCommitMessage(new Error("Canceled by a newer commit-message request."));
+
+    return new Promise<string>((resolve, reject) => {
+      const timeoutId = window.setTimeout(() => {
+        clearPendingCommitMessage(new Error("Timed out waiting for the agent commit message. Try again or paste the agent response manually."));
+      }, AGENT_RESPONSE_TIMEOUT_MS);
+
+      pendingCommitMessageRef.current = { buffer: "", resolve, reject, timeoutId };
+      socket.send(JSON.stringify({ type: "input", data: `${wrapCommitMessagePrompt(prompt)}\r` }));
+    });
+  };
 
   const loadTools = async () => {
     setLoadingTools(true);
@@ -51,11 +144,12 @@ export function AgentTerminalView() {
 
   useEffect(() => {
     return () => {
+      clearPendingCommitMessage(new Error("Agent terminal disconnected."));
       socketRef.current?.close();
       terminalRef.current?.dispose();
-      clearConnectedAgent();
+      onConnectionChange?.(null);
     };
-  }, [clearConnectedAgent]);
+  }, [onConnectionChange]);
 
   useEffect(() => {
     let frame = 0;
@@ -82,11 +176,12 @@ export function AgentTerminalView() {
   }, []);
 
   const disconnect = () => {
+    clearPendingCommitMessage(new Error("Agent terminal disconnected."));
     socketRef.current?.close();
     socketRef.current = null;
     setConnectedTool(null);
     setConnecting(false);
-    clearConnectedAgent();
+    onConnectionChange?.(null);
     void refreshRepo();
   };
 
@@ -99,9 +194,10 @@ export function AgentTerminalView() {
     setError(null);
 
     try {
+      clearPendingCommitMessage(new Error("Agent terminal disconnected."));
       socketRef.current?.close();
       terminalRef.current?.dispose();
-      clearConnectedAgent();
+      onConnectionChange?.(null);
 
       const terminal = new Terminal({
         cursorBlink: true,
@@ -140,24 +236,28 @@ export function AgentTerminalView() {
       socket.addEventListener("open", () => {
         setConnectedTool(tool);
         setConnecting(false);
-        setConnectedAgent(tool, (prompt) => {
-          if (socket.readyState !== WebSocket.OPEN) return;
-          socket.send(JSON.stringify({ type: "input", data: `${prompt}\r` }));
+        onConnectionChange?.({
+          tool,
+          generateCommitMessage: generateCommitMessageWithAgent,
         });
         socket.send(JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows }));
       });
 
       socket.addEventListener("message", (event) => {
         const message = JSON.parse(String(event.data)) as { type: string; data?: string; message?: string; exitCode?: number; signal?: number };
-        if (message.type === "output" && typeof message.data === "string") terminal.write(message.data);
+        if (message.type === "output" && typeof message.data === "string") {
+          terminal.write(message.data);
+          handleAgentOutput(message.data);
+        }
         if (message.type === "error") terminal.writeln(`\r\nError: ${message.message ?? "agent failed"}`);
         if (message.type === "exit") terminal.writeln(`\r\n\r\n[agent exited with code ${message.exitCode ?? "unknown"}]`);
       });
 
       socket.addEventListener("close", () => {
+        clearPendingCommitMessage(new Error("Agent terminal disconnected."));
         setConnectedTool(null);
         setConnecting(false);
-        clearConnectedAgent();
+        onConnectionChange?.(null);
         void refreshRepo();
       });
 
