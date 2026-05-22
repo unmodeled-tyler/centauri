@@ -57,6 +57,7 @@ export default function App() {
   const lastStatusUpdateAt = useRepoStore((s) => s.lastStatusUpdateAt);
   const settings = useSettingsStore((s) => s.settings);
   const [view, setView] = useState<View>("status");
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<GitFile | null>(null);
   const [explorerInitialFilePath, setExplorerInitialFilePath] = useState<string | null>(null);
   const [statusPanelWidth, setStatusPanelWidth] = useState(() => loadStoredNumber(STATUS_PANEL_WIDTH_KEY, 320));
@@ -71,6 +72,7 @@ export default function App() {
     selectedFile,
     onSelectFile: setSelectedFile,
     onConfirmDiscard: (path) => setConfirmDiscardPath(path),
+    onToggleAgentPanel: () => setAgentPanelOpen((open) => !open),
   });
 
   useEffect(() => {
@@ -208,7 +210,12 @@ export default function App() {
 
   return (
     <>
-    <MainLayout currentView={view} onViewChange={setView}>
+    <MainLayout
+      currentView={view}
+      onViewChange={setView}
+      agentPanelOpen={agentPanelOpen}
+      onToggleAgentPanel={() => setAgentPanelOpen((open) => !open)}
+    >
       <div className="h-full flex flex-col bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900/20">
         <header className="h-10 border-b border-zinc-800/60 flex items-center justify-between px-3">
           <div className="flex items-center gap-3">
@@ -223,6 +230,7 @@ export default function App() {
         </header>
 
         <div className="flex-1 flex overflow-hidden">
+          <div className="min-w-0 flex-1 flex overflow-hidden">
           {view === "status" && (
             <>
               <div
@@ -333,7 +341,13 @@ export default function App() {
               />
             </FlatView>
           )}
-          {view === "agents" && <FlatView><AgentTerminalView /></FlatView>}
+          </div>
+
+          {agentPanelOpen && (
+            <aside className="min-w-[360px] max-w-[760px] basis-[42%] border-l border-zinc-800/80 bg-zinc-950 shadow-2xl shadow-black/30">
+              <ErrorBoundary><AgentTerminalView /></ErrorBoundary>
+            </aside>
+          )}
         </div>
       </div>
     </MainLayout>

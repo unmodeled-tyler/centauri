@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useRepoStore } from "../../stores/repoStore";
 
-export type View = "status" | "diff" | "branches" | "log" | "stats" | "stashes" | "rebase" | "settings" | "explorer" | "graph" | "agents";
+export type View = "status" | "diff" | "branches" | "log" | "stats" | "stashes" | "rebase" | "settings" | "explorer" | "graph";
 
 const SIDEBAR_COLLAPSED_KEY = "quanta-sidebar-collapsed";
 
@@ -31,17 +31,20 @@ const NAV_ITEMS: Array<{ id: Exclude<View, "settings">; icon: typeof GitBranch; 
   { id: "stats", icon: ChartColumn, label: "Stats" },
   { id: "stashes", icon: Package, label: "Stashes" },
   { id: "graph", icon: Network, label: "Graph" },
-  { id: "agents", icon: Bot, label: "Agents" },
 ];
 
 export function MainLayout({
   children,
   currentView,
   onViewChange,
+  agentPanelOpen,
+  onToggleAgentPanel,
 }: {
   children: ReactNode;
   currentView: View;
   onViewChange: (view: View) => void;
+  agentPanelOpen: boolean;
+  onToggleAgentPanel: () => void;
 }) {
   const repoPath = useRepoStore((s) => s.repoPath);
   const status = useRepoStore((s) => s.status);
@@ -138,7 +141,19 @@ export function MainLayout({
           ))}
         </div>
 
-        <div className="p-2 border-t border-zinc-800/60">
+        <div className="space-y-1 border-t border-zinc-800/60 p-2">
+          <button
+            onClick={onToggleAgentPanel}
+            title="Agents"
+            className={`w-full rounded-md px-3 py-2 text-sm transition-all duration-150 ease-out ${
+              agentPanelOpen
+                ? "bg-emerald-500/15 text-emerald-200 shadow-sm shadow-black/10"
+                : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60"
+            } ${isCollapsed ? "flex justify-center" : "flex items-center gap-2"}`}
+          >
+            <Bot className="h-4 w-4 flex-shrink-0" />
+            {!isCollapsed && "Agents"}
+          </button>
           <button
             onClick={() => onViewChange("settings")}
             title="Settings"

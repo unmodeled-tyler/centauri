@@ -12,12 +12,14 @@ export function useKeyboardShortcuts({
   selectedFile,
   onSelectFile,
   onConfirmDiscard,
+  onToggleAgentPanel,
 }: {
   view: View;
   onViewChange: (view: View) => void;
   selectedFile: { path: string } | null;
   onSelectFile: (file: null) => void;
   onConfirmDiscard: (path: string) => void;
+  onToggleAgentPanel: () => void;
 }) {
   const repoPath = useRepoStore((s) => s.repoPath);
   const status = useRepoStore((s) => s.status);
@@ -34,6 +36,7 @@ export function useKeyboardShortcuts({
     onViewChange,
     onSelectFile,
     onConfirmDiscard,
+    onToggleAgentPanel,
   });
 
   metaRef.current = {
@@ -46,6 +49,7 @@ export function useKeyboardShortcuts({
     onViewChange,
     onSelectFile,
     onConfirmDiscard,
+    onToggleAgentPanel,
   };
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -55,7 +59,12 @@ export function useKeyboardShortcuts({
 
     if (e.key >= "1" && e.key <= "8") {
       if (isInput) return;
-      const views: View[] = ["status", "diff", "branches", "log", "rebase", "stats", "stashes", "agents"];
+      if (e.key === "8") {
+        e.preventDefault();
+        meta.onToggleAgentPanel();
+        return;
+      }
+      const views: View[] = ["status", "diff", "branches", "log", "rebase", "stats", "stashes"];
       const index = Number.parseInt(e.key, 10) - 1;
       if (views[index]) {
         e.preventDefault();
