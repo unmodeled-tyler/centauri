@@ -99,12 +99,12 @@ Run the app in development mode:
 npm run dev
 ```
 
-This starts the local API server and Vite frontend.
+This starts the local API server, Vite frontend, and opens Centauri in its own Electron app window.
 
-For the desktop/Electron dev launcher:
+If you only want the API and Vite servers without launching the desktop window:
 
 ```bash
-npm run dev:cli
+npm run dev:web
 ```
 
 ## Production build
@@ -123,10 +123,11 @@ npm run start:cli
 ## Scripts
 
 ```bash
-npm run dev          # start server + frontend dev servers
+npm run dev          # start server + frontend and open Electron app window
+npm run dev:web      # start server + frontend only
 npm run dev:server   # start API server in watch mode
 npm run dev:client   # start Vite frontend
-npm run dev:cli      # start local desktop dev launcher
+npm run dev:cli      # alias for the desktop dev launcher
 npm run build        # build frontend and backend
 npm start            # run built server
 npm run start:cli    # run built app through CLI launcher
@@ -161,6 +162,14 @@ The **Build deb release** GitHub Action can be run manually from the Actions tab
 - uploads `centauri_<version>_amd64.deb` as a release asset
 
 The workflow accepts optional `version` and `tag` inputs. If omitted, it uses the version from `package.json` and creates a `v<version>` tag.
+
+Install or upgrade a downloaded package with:
+
+```bash
+sudo apt install ./centauri_<version>_amd64.deb
+```
+
+Newer `.deb` releases install directly over older Centauri `.deb` installs because the package name stays `centauri` and the version increases. The package also declares `Conflicts/Replaces: quanta-control` for compatibility with any older Debian package under the previous app name.
 
 ## AI commit messages
 

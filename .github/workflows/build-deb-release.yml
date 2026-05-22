@@ -128,6 +128,8 @@ jobs:
           Priority: optional
           Architecture: amd64
           Depends: nodejs (>= 20), git
+          Conflicts: quanta-control
+          Replaces: quanta-control
           Installed-Size: $INSTALLED_SIZE
           Maintainer: unmodeled-tyler
           Homepage: https://github.com/unmodeled-tyler/centauri

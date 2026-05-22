@@ -20,7 +20,8 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev": "node ./bin/quanta-control-dev.js",
+    "dev:web": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:cli": "node ./bin/quanta-control-dev.js",
     "dev:client": "vite",
     "dev:desktop": "npx electron ./electron/main.js",
