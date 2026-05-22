@@ -16,6 +16,7 @@ import { featureRoutes } from "./routes/hunksAndStash.js";
 import explorerRoutes from "./routes/explorer.js";
 import graphRoutes from "./routes/graph.js";
 import aiRoutes from "./routes/ai.js";
+import { agentRoutes, setupAgentTerminal } from "./routes/agents.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -244,7 +245,7 @@ export function createApp() {
       `script-src 'self' 'nonce-${nonce}'`,
       `style-src 'self' 'unsafe-inline'`,
       `img-src 'self' data: blob:`,
-      `connect-src 'self'`,
+      `connect-src 'self' ws: wss:`,
       `font-src 'self'`,
       `object-src 'none'`,
       `frame-ancestors 'none'`,
@@ -418,6 +419,7 @@ export function createApp() {
   app.use("/api", featureRoutes);
   app.use("/api/explorer", explorerRoutes);
   app.use("/api/graph", graphRoutes);
+  app.use("/api/agents", agentRoutes);
 
   function aiRateLimit(req: express.Request, _res: express.Response, next: express.NextFunction) {
     const key = req.ip || "unknown";
@@ -510,6 +512,7 @@ export async function startServer(options?: { port?: number; host?: string }) {
 
   return new Promise<{ server: ReturnType<typeof app.listen>; token: string }>((resolveServer, reject) => {
     const server = app.listen(port, host, () => {
+      setupAgentTerminal(server, authToken);
       logger.info("Quanta Control server started", { host, port: String(port) });
       setupGracefulShutdown(server);
       resolveServer({ server, token: authToken });

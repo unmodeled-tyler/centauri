@@ -15,6 +15,7 @@ import { StashView } from "./components/stashes/StashView";
 import { RebaseView } from "./components/rebase/RebaseView";
 import { ExplorerView } from "./components/explorer/ExplorerView";
 import { GraphView } from "./components/graph/GraphView";
+import { AgentTerminalView } from "./components/agents/AgentTerminalView";
 import { useSettingsStore } from "./stores/settingsStore";
 import type { GitFile } from "./types/git";
 import { connectRepoEvents, disconnectRepoEvents } from "./services/sse";
@@ -332,6 +333,7 @@ export default function App() {
               />
             </FlatView>
           )}
+          {view === "agents" && <FlatView><AgentTerminalView /></FlatView>}
         </div>
       </div>
     </MainLayout>

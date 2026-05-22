@@ -20,3 +20,4 @@ test-git.mjs
 *.tsbuildinfo
 .gitnexus
 .quanta-tokens.json
+.deepseek/instructions.md

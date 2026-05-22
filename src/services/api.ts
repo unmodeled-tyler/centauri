@@ -22,6 +22,7 @@ const REPO_BASE = "/api/repos";
 const SYSTEM_BASE = "/api/system";
 const AI_BASE = "/api/ai";
 const FEATURE_BASE = "/api";
+const AGENT_BASE = "/api/agents";
 
 let cachedToken = "";
 let cachedCsrf = "";
@@ -417,4 +418,24 @@ export function getDependencyGraph(repo: string) {
   return api<{ nodes: import("../types/graph").GraphNode[]; edges: import("../types/graph").GraphEdge[]; groups: string[] }>(
     `/api/graph/dependencies?repo=${encodeURIComponent(repo)}`
   );
+}
+
+export interface AgentTool {
+  id: string;
+  label: string;
+  command: string;
+  description: string;
+  available: boolean;
+  path?: string;
+}
+
+export function getAgentTools() {
+  return api<AgentTool[]>(`${AGENT_BASE}/tools`);
+}
+
+export async function createAgentTerminalUrl(repo: string, tool: string) {
+  const token = await getToken();
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const params = new URLSearchParams({ repo, tool, token });
+  return `${protocol}//${window.location.host}/api/agents/terminal?${params}`;
 }

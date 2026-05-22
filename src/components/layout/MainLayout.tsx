@@ -13,10 +13,11 @@ import {
   GitMerge,
   FolderSearch,
   Network,
+  Bot,
 } from "lucide-react";
 import { useRepoStore } from "../../stores/repoStore";
 
-export type View = "status" | "diff" | "branches" | "log" | "stats" | "stashes" | "rebase" | "settings" | "explorer" | "graph";
+export type View = "status" | "diff" | "branches" | "log" | "stats" | "stashes" | "rebase" | "settings" | "explorer" | "graph" | "agents";
 
 const SIDEBAR_COLLAPSED_KEY = "quanta-sidebar-collapsed";
 
@@ -30,6 +31,7 @@ const NAV_ITEMS: Array<{ id: Exclude<View, "settings">; icon: typeof GitBranch; 
   { id: "stats", icon: ChartColumn, label: "Stats" },
   { id: "stashes", icon: Package, label: "Stashes" },
   { id: "graph", icon: Network, label: "Graph" },
+  { id: "agents", icon: Bot, label: "Agents" },
 ];
 
 export function MainLayout({
