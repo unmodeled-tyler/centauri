@@ -173,13 +173,15 @@ startManagedProcess("web", npmCommand, ["run", "dev:client"], {
 await waitFor(`http://127.0.0.1:${apiPort}/api/health`, "API server");
 await waitFor(appUrl, "web client");
 
+const electronArgs = ["electron"];
+if (process.platform === "linux") {
+  electronArgs.push("--no-sandbox");
+}
+electronArgs.push("./electron/main.js", `--url=${appUrl}`);
+
 const electron = spawn(
   npxCommand,
-  [
-    "electron",
-    "./electron/main.js",
-    `--url=${appUrl}`,
-  ],
+  electronArgs,
   {
     cwd: repoRoot,
     env: baseEnv,

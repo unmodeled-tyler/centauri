@@ -102,7 +102,7 @@ Run the app in development mode:
 npm run dev
 ```
 
-This starts the local API server, Vite frontend, and opens Centauri in its own Electron app window.
+This starts the local API server, Vite frontend, and opens Centauri in its own Electron app window. On Linux, the dev launcher passes Electron `--no-sandbox` so local `node_modules/electron` works without configuring the SUID sandbox helper.
 
 If you only want the API and Vite servers without launching the desktop window:
 

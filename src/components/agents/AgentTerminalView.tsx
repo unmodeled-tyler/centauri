@@ -4,6 +4,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { useRepoStore } from "../../stores/repoStore";
+import { useAgentStore } from "../../stores/agentStore";
 import { CentauriMark } from "../brand/CentauriMark";
 import * as api from "../../services/api";
 
@@ -21,6 +22,8 @@ export function AgentTerminalView() {
   const [connecting, setConnecting] = useState(false);
   const [connectedTool, setConnectedTool] = useState<api.AgentTool | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const setConnectedAgent = useAgentStore((s) => s.setConnectedAgent);
+  const clearConnectedAgent = useAgentStore((s) => s.clearConnectedAgent);
 
   const availableTools = useMemo(() => tools.filter((tool) => tool.available), [tools]);
 
@@ -50,8 +53,9 @@ export function AgentTerminalView() {
     return () => {
       socketRef.current?.close();
       terminalRef.current?.dispose();
+      clearConnectedAgent();
     };
-  }, []);
+  }, [clearConnectedAgent]);
 
   useEffect(() => {
     let frame = 0;
@@ -82,6 +86,7 @@ export function AgentTerminalView() {
     socketRef.current = null;
     setConnectedTool(null);
     setConnecting(false);
+    clearConnectedAgent();
     void refreshRepo();
   };
 
@@ -96,6 +101,7 @@ export function AgentTerminalView() {
     try {
       socketRef.current?.close();
       terminalRef.current?.dispose();
+      clearConnectedAgent();
 
       const terminal = new Terminal({
         cursorBlink: true,
@@ -134,6 +140,10 @@ export function AgentTerminalView() {
       socket.addEventListener("open", () => {
         setConnectedTool(tool);
         setConnecting(false);
+        setConnectedAgent(tool, (prompt) => {
+          if (socket.readyState !== WebSocket.OPEN) return;
+          socket.send(JSON.stringify({ type: "input", data: `${prompt}\r` }));
+        });
         socket.send(JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows }));
       });
 
@@ -147,6 +157,7 @@ export function AgentTerminalView() {
       socket.addEventListener("close", () => {
         setConnectedTool(null);
         setConnecting(false);
+        clearConnectedAgent();
         void refreshRepo();
       });
 

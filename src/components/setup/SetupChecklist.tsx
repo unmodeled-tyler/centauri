@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import type { SystemStatus } from "../../types/system";
+import type { AgentTool } from "../../services/api";
+import { CentauriMark } from "../brand/CentauriMark";
 
 function StatusIcon({
   ready,
@@ -87,11 +89,17 @@ export function SetupChecklist({
   loading,
   onOpenSettings,
   onRefresh,
+  agentTools = [],
+  agentsLoading = false,
+  onRefreshAgents,
 }: {
   status: SystemStatus | null;
   loading: boolean;
   onOpenSettings?: () => void;
   onRefresh?: () => void;
+  agentTools?: AgentTool[];
+  agentsLoading?: boolean;
+  onRefreshAgents?: () => void;
 }) {
   if (loading && !status) {
     return (
@@ -109,6 +117,7 @@ export function SetupChecklist({
   }
 
   const githubReady = status.github.installed && status.github.authenticated;
+  const readyAgentTools = agentTools.filter((tool) => tool.available);
 
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
@@ -141,7 +150,7 @@ export function SetupChecklist({
         </div>
         <p className="mt-1 text-sm text-zinc-400">
           Run a quick readiness check before opening a repo. Centauri uses
-          your local Git and GitHub setup, while app defaults live in Settings.
+          your local Git, GitHub, and agent CLI setup before you start building.
         </p>
       </div>
 
@@ -189,6 +198,36 @@ export function SetupChecklist({
           icon={<KeyRound className="h-4 w-4" />}
           command={!githubReady && status.github.installed ? "gh auth login" : undefined}
           note={!githubReady ? status.github.error : undefined}
+        />
+
+        <SetupCard
+          title="Agent CLIs"
+          description={
+            readyAgentTools.length > 0
+              ? `Detected ${readyAgentTools.length} ready tool${readyAgentTools.length === 1 ? "" : "s"}: ${readyAgentTools.map((tool) => tool.label).join(", ")}.`
+              : agentsLoading
+                ? "Scanning PATH for supported coding-agent CLIs..."
+                : "No supported agent CLIs were detected on PATH yet."
+          }
+          ready={readyAgentTools.length > 0}
+          icon={<CentauriMark className="h-5 w-5" variant="agent" />}
+          actions={
+            onRefreshAgents ? (
+              <button
+                onClick={onRefreshAgents}
+                disabled={agentsLoading}
+                className="inline-flex items-center gap-1 rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${agentsLoading ? "animate-spin" : ""}`} />
+                Auto-detect
+              </button>
+            ) : undefined
+          }
+          note={
+            readyAgentTools.length > 0
+              ? readyAgentTools.map((tool) => `${tool.command}${tool.path ? ` → ${tool.path}` : ""}`).join(" · ")
+              : "Supported tools include claude, codex, pi, opencode, aider, gemini, cursor-agent, and amp."
+          }
         />
 
         <SetupCard

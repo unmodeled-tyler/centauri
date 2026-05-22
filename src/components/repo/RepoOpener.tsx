@@ -24,6 +24,8 @@ export function RepoOpener({ onSelect }: RepoOpenerProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [systemLoading, setSystemLoading] = useState(true);
+  const [agentTools, setAgentTools] = useState<api.AgentTool[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const loadSystemStatus = useCallback(() => {
@@ -34,14 +36,23 @@ export function RepoOpener({ onSelect }: RepoOpenerProps) {
       .finally(() => setSystemLoading(false));
   }, []);
 
+  const loadAgentTools = useCallback(() => {
+    setAgentsLoading(true);
+    api.getAgentTools()
+      .then(setAgentTools)
+      .catch(() => setAgentTools([]))
+      .finally(() => setAgentsLoading(false));
+  }, []);
+
   useEffect(() => {
     const stored = loadRecentReposUtil();
     api.getRecentRepos()
       .then((repos) => setRecent(mergeRecentRepos(stored, repos)))
       .catch(() => setRecent(stored));
     loadSystemStatus();
+    loadAgentTools();
     inputRef.current?.focus();
-  }, [loadSystemStatus]);
+  }, [loadAgentTools, loadSystemStatus]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -294,6 +305,9 @@ export function RepoOpener({ onSelect }: RepoOpenerProps) {
             loading={systemLoading}
             onOpenSettings={() => setShowSettings(true)}
             onRefresh={loadSystemStatus}
+            agentTools={agentTools}
+            agentsLoading={agentsLoading}
+            onRefreshAgents={loadAgentTools}
           />
         </div>
       </div>

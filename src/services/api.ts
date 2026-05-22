@@ -433,6 +433,10 @@ export function getAgentTools() {
   return api<AgentTool[]>(`${AGENT_BASE}/tools`);
 }
 
+export function getAgentCommitMessagePrompt(repo: string) {
+  return api<{ prompt: string }>(`${AGENT_BASE}/commit-message-prompt?repo=${encodeURIComponent(repo)}`);
+}
+
 export async function createAgentTerminalUrl(repo: string, tool: string) {
   const token = await getToken();
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";

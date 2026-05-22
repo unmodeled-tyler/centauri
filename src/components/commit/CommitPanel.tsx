@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { GitCommit, Upload, Check, WandSparkles } from "lucide-react";
 import { useRepoStore } from "../../stores/repoStore";
 import { useSettingsStore } from "../../stores/settingsStore";
+import { useAgentStore } from "../../stores/agentStore";
 import * as api from "../../services/api";
 
 const BRAILLE_SPINNER_FRAMES: [string, ...string[]] = [
@@ -28,11 +29,14 @@ export function CommitPanel({ onCommitted }: { onCommitted: () => void }) {
   const [generatingMessage, setGeneratingMessage] = useState(false);
   const [spinnerFrame, setSpinnerFrame] = useState(0);
   const [generationError, setGenerationError] = useState("");
+  const [generationNotice, setGenerationNotice] = useState("");
   const [commitError, setCommitError] = useState("");
   const [pushDialog, setPushDialog] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [dontAskAgain, setDontAskAgain] = useState(false);
   const pushYesRef = useRef<HTMLButtonElement>(null);
+  const connectedAgent = useAgentStore((s) => s.connectedTool);
+  const sendAgentPrompt = useAgentStore((s) => s.sendPrompt);
   const hasChanges = (status?.files.length ?? 0) > 0;
   const hasStaged =
     status?.files.some(
@@ -105,24 +109,21 @@ export function CommitPanel({ onCommitted }: { onCommitted: () => void }) {
   const handleGenerateMessage = async () => {
     if (!repoPath || !hasChanges || generatingMessage) return;
 
-    const endpoint = settings.aiCommitEndpoint.trim();
-    const model = settings.aiCommitModel.trim();
-    if (!endpoint || !model) {
-      setGenerationError("Configure an AI endpoint and model in Settings.");
+    if (!connectedAgent || !sendAgentPrompt) {
+      setGenerationNotice("");
+      setGenerationError("Connect an agent CLI in the Agent Terminal, then try again.");
       return;
     }
 
     setGeneratingMessage(true);
     setGenerationError("");
+    setGenerationNotice("");
     try {
-      const result = await api.generateCommitMessage(repoPath, {
-        endpoint,
-        model,
-        apiKey: settings.aiCommitApiKey.trim() || undefined,
-      });
-      setMessage(result.message.trim());
+      const { prompt } = await api.getAgentCommitMessagePrompt(repoPath);
+      sendAgentPrompt(prompt);
+      setGenerationNotice(`Sent commit-message request to ${connectedAgent.label}. Copy its response into the commit box when ready.`);
     } catch (err) {
-      setGenerationError(err instanceof Error ? err.message : "Could not generate commit message.");
+      setGenerationError(err instanceof Error ? err.message : "Could not send commit-message request to the agent.");
     } finally {
       setGeneratingMessage(false);
     }
@@ -194,6 +195,9 @@ export function CommitPanel({ onCommitted }: { onCommitted: () => void }) {
         </div>
         {generationError && (
           <div className="mt-2 text-xs text-red-400">{generationError}</div>
+        )}
+        {generationNotice && (
+          <div className="mt-2 text-xs text-emerald-300">{generationNotice}</div>
         )}
         {commitError && (
           <div className="mt-2 text-xs text-red-400">{commitError}</div>
