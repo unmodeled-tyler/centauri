@@ -19,3 +19,15 @@ test-git.mjs
 .gitnexus
 .quanta-tokens.json
 .deepseek/instructions.md
+.superpowers/*
+.superpowers-logs/*
+.superpowers-cache/*
+.superpowers-temp/*
+.superpowers-outputs/*
+.superpowers-uploads/*
+.superpowers-extensions/*
+.superpowers-plugins/*
+.superpowers-scripts/*
+.superpowers-helpers/*
+.superpowers-config/*
+.superpowers-data/*

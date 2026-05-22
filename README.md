@@ -134,6 +134,22 @@ npm run typecheck    # TypeScript checks for client and server
 npm run lint         # ESLint
 ```
 
+## Branch workflow
+
+The intended repo flow is:
+
+- `dev` receives active work and nightly changes
+- `main` stays as the promoted/stable branch
+- the **Promote dev to main** GitHub Action can be run manually from the Actions tab
+
+To promote `dev`, open GitHub Actions, choose **Promote dev to main**, run the workflow, and type:
+
+```txt
+promote dev
+```
+
+By default the action runs `npm ci`, `npm run typecheck`, and `npm run build` before pushing `dev` to `main`.
+
 ## AI commit messages
 
 Centauri can generate commit messages from the current Git diff using an OpenAI-compatible endpoint configured in Settings.

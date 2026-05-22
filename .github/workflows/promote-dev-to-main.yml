@@ -1,0 +1,68 @@
+name: Promote dev to main
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "promote dev" to confirm pushing dev to main'
+        required: true
+        type: string
+      run_checks:
+        description: "Run install, typecheck, and build before promotion"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: promote-dev-to-main
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote dev to main
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'promote dev'
+
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        if: github.event.inputs.run_checks == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: github.event.inputs.run_checks == 'true'
+        run: npm ci
+
+      - name: Typecheck
+        if: github.event.inputs.run_checks == 'true'
+        run: npm run typecheck
+
+      - name: Build
+        if: github.event.inputs.run_checks == 'true'
+        run: npm run build
+
+      - name: Configure Git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Promote dev HEAD to main
+        run: |
+          git fetch origin main dev
+          git push origin HEAD:main
+
+      - name: Summary
+        run: |
+          echo "Promoted dev to main at $(git rev-parse --short HEAD)" >> "$GITHUB_STEP_SUMMARY"
