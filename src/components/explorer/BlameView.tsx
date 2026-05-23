@@ -40,7 +40,7 @@ export function BlameView({
   }
 
   return (
-    <div className="overflow-auto font-mono text-xs leading-5">
+    <div className="font-mono text-xs leading-5">
       {lines.map((line, i) => {
         const isRangeSelected = selectedLines.has(line.line);
         return (
@@ -60,7 +60,7 @@ export function BlameView({
                 {getRelativeTime(line.date)}
               </span>
             </div>
-            <div className="flex-1 px-3 text-zinc-300 whitespace-pre">
+            <div className="min-w-0 flex-1 px-3 text-zinc-300 whitespace-pre">
               {line.content}
             </div>
           </div>

@@ -717,7 +717,7 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
                   </div>
 
                   {/* Blame (top half) */}
-                  <div className="flex-1 min-h-0 overflow-hidden border-b border-zinc-800/40">
+                  <div className="flex-1 min-h-0 overflow-auto border-b border-zinc-800/40">
                     <div className="flex items-center justify-between px-3 py-1 border-b border-zinc-800/30 bg-zinc-900/20">
                       <div className="flex items-center gap-1.5">
                         <Hash className="h-3 w-3 text-zinc-500" />
@@ -739,15 +739,13 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
                         </button>
                       )}
                     </div>
-                    <div className="overflow-auto h-[calc(100%-25px)]">
-                      <BlameView
-                        lines={blameLines}
-                        loading={blameLoading}
-                        error={blameError}
-                        selectedLines={selectedLines}
-                        onToggleLine={toggleLine}
-                      />
-                    </div>
+                    <BlameView
+                      lines={blameLines}
+                      loading={blameLoading}
+                      error={blameError}
+                      selectedLines={selectedLines}
+                      onToggleLine={toggleLine}
+                    />
                   </div>
 
                   {/* Line History (appears when tracing) */}
