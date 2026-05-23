@@ -38,15 +38,27 @@ function resolveTool(id: string): AgentTool | undefined {
   return AGENT_TOOLS.find((tool) => tool.id === id);
 }
 
+function shellQuote(value: string) {
+  if (/^[A-Za-z0-9_./:=@%+-]+$/.test(value)) return value;
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 function launchArgsForTool(toolId: string, url: URL) {
-  const args: string[] = [];
-  if (toolId === "codex" && url.searchParams.get("codexYolo") === "true") {
-    args.push("--yolo");
+  const rawArgs = url.searchParams.get("args");
+  let requested: unknown = [];
+  try {
+    requested = rawArgs ? JSON.parse(rawArgs) : [];
+  } catch {
+    requested = [];
   }
-  if (toolId === "claude" && url.searchParams.get("claudeSkipPermissions") === "true") {
-    args.push("--dangerously-skip-permissions");
-  }
-  return args;
+
+  const allowedByTool: Record<string, Set<string>> = {
+    codex: new Set(["--yolo"]),
+    claude: new Set(["--dangerously-skip-permissions"]),
+  };
+  const allowed = allowedByTool[toolId];
+  if (!allowed || !Array.isArray(requested)) return [];
+  return requested.filter((arg): arg is string => typeof arg === "string" && allowed.has(arg));
 }
 
 async function commandPath(command: string): Promise<string | undefined> {
@@ -208,11 +220,9 @@ export function setupAgentTerminal(server: Server, authToken: string) {
     }
 
     const launchArgs = launchArgsForTool(tool.id, url);
-    const launchCommand = [tool.command, ...launchArgs].join(" ");
+    const launchCommand = [tool.command, ...launchArgs].map(shellQuote).join(" ");
     const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "bash");
-    const shellArgs = process.platform === "win32"
-      ? ["-NoLogo", "-Command", launchCommand]
-      : ["-lc", `exec ${launchCommand}`];
+    const shellArgs = process.platform === "win32" ? ["-NoLogo"] : ["-i"];
 
     const term = pty.spawn(shell, shellArgs, {
       name: "xterm-256color",
@@ -225,6 +235,9 @@ export function setupAgentTerminal(server: Server, authToken: string) {
     send(ws, { type: "ready", tool: tool.id, cwd: repo, args: launchArgs, command: launchCommand });
 
     term.onData((data) => send(ws, { type: "output", data }));
+    setTimeout(() => {
+      if (term.pid) term.write(`${process.platform === "win32" ? launchCommand : `exec ${launchCommand}`}\r`);
+    }, 50);
     term.onExit(({ exitCode, signal }) => {
       send(ws, { type: "exit", exitCode, signal });
       ws.close();

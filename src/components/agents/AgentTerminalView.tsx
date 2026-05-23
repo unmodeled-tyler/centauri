@@ -94,6 +94,19 @@ export function AgentTerminalView({
   const [error, setError] = useState<string | null>(null);
 
   const availableTools = useMemo(() => tools.filter((tool) => tool.available), [tools]);
+  const selectedToolMeta = useMemo(
+    () => tools.find((tool) => tool.id === selectedTool) ?? null,
+    [selectedTool, tools],
+  );
+  const getLaunchArgs = (toolId: string) => {
+    if (toolId === "codex" && codexYolo) return ["--yolo"];
+    if (toolId === "claude" && claudeSkipPermissions) return ["--dangerously-skip-permissions"];
+    return [];
+  };
+  const selectedLaunchArgs = useMemo(
+    () => getLaunchArgs(selectedTool),
+    [claudeSkipPermissions, codexYolo, selectedTool],
+  );
 
   const clearPendingCommitMessage = (err?: Error) => {
     const pending = pendingCommitMessageRef.current;
@@ -239,10 +252,7 @@ export function AgentTerminalView({
         window.requestAnimationFrame(() => fit.fit());
       }
 
-      const launchFlags = [
-        tool.id === "codex" && codexYolo ? "--yolo" : "",
-        tool.id === "claude" && claudeSkipPermissions ? "--dangerously-skip-permissions" : "",
-      ].filter(Boolean);
+      const launchFlags = getLaunchArgs(tool.id);
 
       terminal.writeln(`Launching ${tool.label} in ${repoPath}`);
       if (launchFlags.length > 0) {
@@ -250,10 +260,7 @@ export function AgentTerminalView({
       }
       terminal.writeln("────────────────────────────────────────────────────────────");
 
-      const url = await api.createAgentTerminalUrl(repoPath, tool.id, {
-        codexYolo: tool.id === "codex" && codexYolo,
-        claudeSkipPermissions: tool.id === "claude" && claudeSkipPermissions,
-      });
+      const url = await api.createAgentTerminalUrl(repoPath, tool.id, { args: launchFlags });
       const socket = new WebSocket(url);
       socketRef.current = socket;
 
@@ -368,6 +375,12 @@ export function AgentTerminalView({
                 />
                 Skip Permissions
               </label>
+            )}
+
+            {!connectedTool && selectedToolMeta && (
+              <div className="w-full truncate text-right font-mono text-[10px] text-zinc-600 sm:w-auto" title={[selectedToolMeta.command, ...selectedLaunchArgs].join(" ")}>
+                {[selectedToolMeta.command, ...selectedLaunchArgs].join(" ")}
+              </div>
             )}
 
             {connectedTool ? (
