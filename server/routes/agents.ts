@@ -221,10 +221,7 @@ export function setupAgentTerminal(server: Server, authToken: string) {
 
     const launchArgs = launchArgsForTool(tool.id, url);
     const launchCommand = [tool.command, ...launchArgs].map(shellQuote).join(" ");
-    const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "bash");
-    const shellArgs = process.platform === "win32" ? ["-NoLogo"] : ["-i"];
-
-    const term = pty.spawn(shell, shellArgs, {
+    const term = pty.spawn(path, launchArgs, {
       name: "xterm-256color",
       cols: 100,
       rows: 30,
@@ -235,9 +232,6 @@ export function setupAgentTerminal(server: Server, authToken: string) {
     send(ws, { type: "ready", tool: tool.id, cwd: repo, args: launchArgs, command: launchCommand });
 
     term.onData((data) => send(ws, { type: "output", data }));
-    setTimeout(() => {
-      if (term.pid) term.write(`${process.platform === "win32" ? launchCommand : `exec ${launchCommand}`}\r`);
-    }, 50);
     term.onExit(({ exitCode, signal }) => {
       send(ws, { type: "exit", exitCode, signal });
       ws.close();

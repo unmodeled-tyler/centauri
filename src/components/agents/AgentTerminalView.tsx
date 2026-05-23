@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Cable, Loader2, Play, RefreshCw } from "lucide-react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -17,6 +17,7 @@ const COMMIT_MESSAGE_END = "CENTAURI_COMMIT_MESSAGE_END";
 const AGENT_RESPONSE_TIMEOUT_MS = 120_000;
 const CODEX_YOLO_KEY = "centauri-agent-codex-yolo";
 const CLAUDE_SKIP_PERMISSIONS_KEY = "centauri-agent-claude-skip-permissions";
+const ANSI_PATTERN = new RegExp(String.raw`\u001b\[[0-?]*[ -/]*[@-~]`, "g");
 
 function loadStoredBoolean(key: string) {
   try {
@@ -34,7 +35,7 @@ interface PendingCommitMessageRequest {
 }
 
 function stripAnsi(value: string) {
-  return value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+  return value.replace(ANSI_PATTERN, "");
 }
 
 function cleanCommitMessage(value: string) {
@@ -98,14 +99,14 @@ export function AgentTerminalView({
     () => tools.find((tool) => tool.id === selectedTool) ?? null,
     [selectedTool, tools],
   );
-  const getLaunchArgs = (toolId: string) => {
+  const getLaunchArgs = useCallback((toolId: string) => {
     if (toolId === "codex" && codexYolo) return ["--yolo"];
     if (toolId === "claude" && claudeSkipPermissions) return ["--dangerously-skip-permissions"];
     return [];
-  };
+  }, [claudeSkipPermissions, codexYolo]);
   const selectedLaunchArgs = useMemo(
     () => getLaunchArgs(selectedTool),
-    [claudeSkipPermissions, codexYolo, selectedTool],
+    [getLaunchArgs, selectedTool],
   );
 
   const clearPendingCommitMessage = (err?: Error) => {
