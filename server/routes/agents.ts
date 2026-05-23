@@ -38,12 +38,7 @@ function resolveTool(id: string): AgentTool | undefined {
   return AGENT_TOOLS.find((tool) => tool.id === id);
 }
 
-function shellQuote(value: string) {
-  if (/^[A-Za-z0-9_./:=@%+-]+$/.test(value)) return value;
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function launchArgsForTool(toolId: string, url: URL) {
+function requestedLaunchArgs(url: URL) {
   const rawArgs = url.searchParams.get("args");
   let requested: unknown = [];
   try {
@@ -52,13 +47,17 @@ function launchArgsForTool(toolId: string, url: URL) {
     requested = [];
   }
 
+  return Array.isArray(requested) ? requested.filter((arg): arg is string => typeof arg === "string") : [];
+}
+
+function launchArgsForTool(toolId: string, requested: string[]) {
   const allowedByTool: Record<string, Set<string>> = {
     codex: new Set(["--yolo"]),
     claude: new Set(["--dangerously-skip-permissions"]),
   };
   const allowed = allowedByTool[toolId];
-  if (!allowed || !Array.isArray(requested)) return [];
-  return requested.filter((arg): arg is string => typeof arg === "string" && allowed.has(arg));
+  if (!allowed) return [];
+  return requested.filter((arg) => allowed.has(arg));
 }
 
 async function commandPath(command: string): Promise<string | undefined> {
@@ -219,8 +218,8 @@ export function setupAgentTerminal(server: Server, authToken: string) {
       return;
     }
 
-    const launchArgs = launchArgsForTool(tool.id, url);
-    const launchCommand = [tool.command, ...launchArgs].map(shellQuote).join(" ");
+    const requestedArgs = requestedLaunchArgs(url);
+    const launchArgs = launchArgsForTool(tool.id, requestedArgs);
     const term = pty.spawn(path, launchArgs, {
       name: "xterm-256color",
       cols: 100,
@@ -229,7 +228,7 @@ export function setupAgentTerminal(server: Server, authToken: string) {
       env: { ...process.env, TERM: "xterm-256color" },
     });
 
-    send(ws, { type: "ready", tool: tool.id, cwd: repo, args: launchArgs, command: launchCommand });
+    send(ws, { type: "ready", tool: tool.id, cwd: repo, args: launchArgs });
 
     term.onData((data) => send(ws, { type: "output", data }));
     term.onExit(({ exitCode, signal }) => {

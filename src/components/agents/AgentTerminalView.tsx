@@ -17,6 +17,8 @@ const COMMIT_MESSAGE_END = "CENTAURI_COMMIT_MESSAGE_END";
 const AGENT_RESPONSE_TIMEOUT_MS = 120_000;
 const CODEX_YOLO_KEY = "centauri-agent-codex-yolo";
 const CLAUDE_SKIP_PERMISSIONS_KEY = "centauri-agent-claude-skip-permissions";
+const CODEX_YOLO_FLAG = "--yolo";
+const CLAUDE_SKIP_PERMISSIONS_FLAG = "--dangerously-skip-permissions";
 const ANSI_PATTERN = new RegExp(String.raw`\u001b\[[0-?]*[ -/]*[@-~]`, "g");
 
 function loadStoredBoolean(key: string) {
@@ -100,8 +102,8 @@ export function AgentTerminalView({
     [selectedTool, tools],
   );
   const getLaunchArgs = useCallback((toolId: string) => {
-    if (toolId === "codex" && codexYolo) return ["--yolo"];
-    if (toolId === "claude" && claudeSkipPermissions) return ["--dangerously-skip-permissions"];
+    if (toolId === "codex" && codexYolo) return [CODEX_YOLO_FLAG];
+    if (toolId === "claude" && claudeSkipPermissions) return [CLAUDE_SKIP_PERMISSIONS_FLAG];
     return [];
   }, [claudeSkipPermissions, codexYolo]);
   const selectedLaunchArgs = useMemo(
@@ -256,9 +258,6 @@ export function AgentTerminalView({
       const launchFlags = getLaunchArgs(tool.id);
 
       terminal.writeln(`Launching ${tool.label} in ${repoPath}`);
-      if (launchFlags.length > 0) {
-        terminal.writeln(`Launch flags: ${launchFlags.join(" ")}`);
-      }
       terminal.writeln("────────────────────────────────────────────────────────────");
 
       const url = await api.createAgentTerminalUrl(repoPath, tool.id, { args: launchFlags });
@@ -282,9 +281,9 @@ export function AgentTerminalView({
       });
 
       socket.addEventListener("message", (event) => {
-        const message = JSON.parse(String(event.data)) as { type: string; data?: string; message?: string; exitCode?: number; signal?: number; args?: string[]; command?: string };
-        if (message.type === "ready" && message.command) {
-          terminal.writeln(`\r\nConfirmed launch command: ${message.command}\r\n`);
+        const message = JSON.parse(String(event.data)) as { type: string; data?: string; message?: string; exitCode?: number; signal?: number; args?: string[] };
+        if (message.type === "ready" && message.args?.length) {
+          terminal.writeln(`\r\nApplied flags: ${message.args.join(" ")}\r\n`);
         }
         if (message.type === "output" && typeof message.data === "string") {
           terminal.write(message.data);
@@ -351,7 +350,7 @@ export function AgentTerminalView({
             {selectedTool === "codex" && !connectedTool && (
               <label
                 className="inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900"
-                title="Launch Codex with --yolo"
+                title={`Launch Codex with ${CODEX_YOLO_FLAG}`}
               >
                 <input
                   type="checkbox"
@@ -366,7 +365,7 @@ export function AgentTerminalView({
             {selectedTool === "claude" && !connectedTool && (
               <label
                 className="inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900"
-                title="Launch Claude Code with --dangerously-skip-permissions"
+                title={`Launch Claude Code with ${CLAUDE_SKIP_PERMISSIONS_FLAG}`}
               >
                 <input
                   type="checkbox"
