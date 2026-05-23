@@ -111,7 +111,6 @@ router.get("/commit-diff", async (req, res, next) => {
       "show",
       "--format=",
       "--no-color",
-      "--",
       commit,
     ]);
     if (result.exitCode !== 0) {
