@@ -34,6 +34,7 @@ const AGENT_TOOLS: AgentTool[] = [
   { id: "amp", label: "Amp", command: "amp", description: "Sourcegraph Amp coding agent" },
   { id: "droid", label: "Droid", command: "droid", description: "Factory Droid coding agent" },
   { id: "hermes", label: "Hermes", command: "hermes", description: "Hermes coding agent" },
+  { id: "openclaw", label: "OpenClaw", command: "openclaw", description: "OpenClaw coding agent" },
 ];
 
 function resolveTool(id: string): AgentTool | undefined {
