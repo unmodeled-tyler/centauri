@@ -19,6 +19,7 @@ export interface AppSettings {
   aiCommitModel: string;
   aiCommitApiKey: string;
   theme: ThemeId;
+  defaultAgent: string;
 }
 
 const DEFAULTS: AppSettings = {
@@ -38,6 +39,7 @@ const DEFAULTS: AppSettings = {
   aiCommitModel: "gpt-4.1-mini",
   aiCommitApiKey: "",
   theme: getStoredTheme(),
+  defaultAgent: "",
 };
 
 const SETTINGS_KEY = "quanta-settings";

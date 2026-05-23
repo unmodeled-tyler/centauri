@@ -89,6 +89,7 @@ export function AgentTerminalView({
   const fitRef = useRef<FitAddon | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const pendingCommitMessageRef = useRef<PendingCommitMessageRequest | null>(null);
+  const autoLaunchedRef = useRef(false);
   const [tools, setTools] = useState<api.AgentTool[]>([]);
   const [selectedTool, setSelectedTool] = useState("");
   const [loadingTools, setLoadingTools] = useState(true);
@@ -98,6 +99,7 @@ export function AgentTerminalView({
   const [claudeSkipPermissions, setClaudeSkipPermissions] = useState(() => loadStoredBoolean(CLAUDE_SKIP_PERMISSIONS_KEY));
   const [error, setError] = useState<string | null>(null);
   const theme = useSettingsStore((s) => s.settings.theme);
+  const defaultAgent = useSettingsStore((s) => s.settings.defaultAgent);
   const terminalTheme = THEMES[theme].terminal;
 
   const availableTools = useMemo(() => tools.filter((tool) => tool.available), [tools]);
@@ -158,10 +160,12 @@ export function AgentTerminalView({
     try {
       const nextTools = await api.getAgentTools();
       setTools(nextTools);
+      const preferredId = useSettingsStore.getState().settings.defaultAgent;
+      const preferred = preferredId ? nextTools.find((t) => t.id === preferredId && t.available) : undefined;
       const firstAvailable = nextTools.find((tool) => tool.available);
       setSelectedTool((current) => {
         if (current && nextTools.some((tool) => tool.id === current && tool.available)) return current;
-        return firstAvailable?.id ?? "";
+        return preferred?.id ?? firstAvailable?.id ?? "";
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to detect agent tools");
@@ -309,6 +313,13 @@ export function AgentTerminalView({
       setConnecting(false);
     }
   };
+
+  // Auto-launch default agent on mount
+  useEffect(() => {
+    if (autoLaunchedRef.current || loadingTools || connecting || connectedTool || !repoPath || !selectedTool || !defaultAgent) return;
+    autoLaunchedRef.current = true;
+    startSession();
+  }, [loadingTools, repoPath, selectedTool]);
 
   return (
     <div ref={panelRef} className="flex h-full min-w-0 flex-col overflow-hidden bg-zinc-950">

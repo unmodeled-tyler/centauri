@@ -10,11 +10,13 @@ import {
   FolderOpen,
   Bot,
   Palette,
+  Play,
 } from "lucide-react";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useRepoStore } from "../../stores/repoStore";
 import { ConfirmDialog } from "../common/Dialog";
 import { THEMES, THEME_ORDER } from "../../themes/themes";
+import type { AgentTool } from "../../services/api";
 import * as api from "../../services/api";
 
 export function SettingsView() {
@@ -29,6 +31,8 @@ export function SettingsView() {
     ok: boolean;
     message: string;
   } | null>(null);
+  const [agentTools, setAgentTools] = useState<AgentTool[]>([]);
+  const [loadingAgents, setLoadingAgents] = useState(true);
 
   useEffect(() => {
     if (!repoPath) return;
@@ -44,6 +48,14 @@ export function SettingsView() {
       })
       .catch(() => {});
   }, [repoPath]);
+
+  useEffect(() => {
+    setLoadingAgents(true);
+    api.getAgentTools().then((tools) => {
+      setAgentTools(tools.filter((t) => t.available));
+      setLoadingAgents(false);
+    }).catch(() => setLoadingAgents(false));
+  }, []);
 
   const handleTestAiEndpoint = async () => {
     const endpoint = settings.aiCommitEndpoint.trim();
@@ -130,6 +142,26 @@ export function SettingsView() {
               onChange={(v) => updateSetting("defaultBranch", v)}
               placeholder="main"
             />
+          </div>
+        </section>
+
+        <section>
+          <SectionHeader icon={<Play className="w-4 h-4" />} title="Agent Harness" />
+          <div className="mt-3">
+            <select
+              value={settings.defaultAgent}
+              onChange={(e) => updateSetting("defaultAgent", e.target.value)}
+              disabled={loadingAgents}
+              className="w-full rounded-md border border-zinc-700/80 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-200 outline-none transition focus:border-emerald-500/60 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="">Auto-detect first available</option>
+              {agentTools.map((tool) => (
+                <option key={tool.id} value={tool.id}>{tool.label}</option>
+              ))}
+            </select>
+            <div className="mt-1 text-xs text-zinc-600">
+              Agent panel auto-launches this tool when a repo is loaded.
+            </div>
           </div>
         </section>
 
