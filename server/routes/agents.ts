@@ -32,6 +32,7 @@ const AGENT_TOOLS: AgentTool[] = [
   { id: "gemini", label: "Gemini CLI", command: "gemini", description: "Google Gemini CLI" },
   { id: "cursor-agent", label: "Cursor Agent", command: "cursor-agent", description: "Cursor's command-line coding agent" },
   { id: "amp", label: "Amp", command: "amp", description: "Sourcegraph Amp coding agent" },
+  { id: "droid", label: "Droid", command: "droid", description: "Factory Droid coding agent" },
 ];
 
 function resolveTool(id: string): AgentTool | undefined {
