@@ -9,10 +9,12 @@ import {
   RotateCcw,
   FolderOpen,
   Bot,
+  Palette,
 } from "lucide-react";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useRepoStore } from "../../stores/repoStore";
 import { ConfirmDialog } from "../common/Dialog";
+import { THEMES, THEME_ORDER } from "../../themes/themes";
 import * as api from "../../services/api";
 
 export function SettingsView() {
@@ -188,6 +190,33 @@ export function SettingsView() {
                 </button>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section>
+          <SectionHeader icon={<Palette className="w-4 h-4" />} title="Theme" />
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {THEME_ORDER.map((id) => {
+              const theme = THEMES[id];
+              const isActive = settings.theme === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => updateSetting("theme", id)}
+                  className={`flex items-center gap-2 rounded-md border px-3 py-2 text-left text-xs transition-all ${
+                    isActive
+                      ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-200"
+                      : "border-zinc-700/60 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200"
+                  }`}
+                >
+                  <span
+                    className="block h-3.5 w-3.5 rounded-full border border-zinc-600"
+                    style={{ background: theme.terminal.background }}
+                  />
+                  {theme.label}
+                </button>
+              );
+            })}
           </div>
         </section>
 

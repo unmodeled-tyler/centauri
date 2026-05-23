@@ -17,6 +17,7 @@ import { ExplorerView } from "./components/explorer/ExplorerView";
 import { GraphView } from "./components/graph/GraphView";
 import { AgentTerminalView } from "./components/agents/AgentTerminalView";
 import { useSettingsStore } from "./stores/settingsStore";
+import { useTheme } from "./themes/useTheme";
 import type { GitFile } from "./types/git";
 import { connectRepoEvents, disconnectRepoEvents } from "./services/sse";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -54,6 +55,7 @@ export default function App() {
   const status = useRepoStore((s) => s.status);
   const lastStatusUpdateAt = useRepoStore((s) => s.lastStatusUpdateAt);
   const settings = useSettingsStore((s) => s.settings);
+  useTheme(settings.theme);
   const [view, setView] = useState<View>("status");
   const [agentPanelOpen, setAgentPanelOpen] = useState(true);
   const [selectedFile, setSelectedFile] = useState<GitFile | null>(null);

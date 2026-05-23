@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { getStoredTheme, storeTheme } from "../themes/useTheme";
+import type { ThemeId } from "../themes/themes";
 
 export interface AppSettings {
   defaultRepoPath: string;
@@ -16,6 +18,7 @@ export interface AppSettings {
   aiCommitEndpoint: string;
   aiCommitModel: string;
   aiCommitApiKey: string;
+  theme: ThemeId;
 }
 
 const DEFAULTS: AppSettings = {
@@ -34,6 +37,7 @@ const DEFAULTS: AppSettings = {
   aiCommitEndpoint: "https://api.openai.com/v1",
   aiCommitModel: "gpt-4.1-mini",
   aiCommitApiKey: "",
+  theme: getStoredTheme(),
 };
 
 const SETTINGS_KEY = "quanta-settings";
@@ -111,6 +115,9 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     set((state) => {
       const next = { ...state.settings, [key]: value };
       void saveSettings(next);
+      if (key === "theme") {
+        storeTheme(value as ThemeId);
+      }
       return { settings: next };
     }),
 

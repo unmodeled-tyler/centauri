@@ -4,6 +4,8 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { useRepoStore } from "../../stores/repoStore";
+import { useSettingsStore } from "../../stores/settingsStore";
+import { THEMES } from "../../themes/themes";
 import { CentauriMark } from "../brand/CentauriMark";
 import * as api from "../../services/api";
 
@@ -95,6 +97,8 @@ export function AgentTerminalView({
   const [codexYolo, setCodexYolo] = useState(() => loadStoredBoolean(CODEX_YOLO_KEY));
   const [claudeSkipPermissions, setClaudeSkipPermissions] = useState(() => loadStoredBoolean(CLAUDE_SKIP_PERMISSIONS_KEY));
   const [error, setError] = useState<string | null>(null);
+  const theme = useSettingsStore((s) => s.settings.theme);
+  const terminalTheme = THEMES[theme].terminal;
 
   const availableTools = useMemo(() => tools.filter((tool) => tool.available), [tools]);
   const selectedToolMeta = useMemo(
@@ -238,12 +242,7 @@ export function AgentTerminalView({
         cursorBlink: true,
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
         fontSize: 13,
-        theme: {
-          background: "#09090b",
-          foreground: "#e4e4e7",
-          cursor: "#34d399",
-          selectionBackground: "#3f3f46",
-        },
+        theme: terminalTheme,
       });
       const fit = new FitAddon();
       terminal.loadAddon(fit);
