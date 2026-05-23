@@ -1,13 +1,26 @@
-import { useRef, useState, useMemo, useCallback } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { useRef, useState, useMemo, useCallback, useEffect, createContext, useContext, memo } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Stars, Line, Html } from "@react-three/drei";
 import type { GraphEdge } from "../../types/graph";
 import type { LayoutNode } from "./useGraphLayout";
 import * as THREE from "three";
 
-const MAX_VISIBLE_EDGES = 900;
-const MAX_PULSE_EDGES = 120;
-const MAX_IDLE_LABELS = 40;
+const MAX_VISIBLE_EDGES = 500;
+const MAX_PULSE_EDGES = 25;
+const MAX_IDLE_LABELS = 12;
+
+type AnimFn = (time: number) => void;
+const AnimationContext = createContext<{ register: (fn: AnimFn) => () => void } | null>(null);
+
+function useAnimation(fn: AnimFn, deps: unknown[]) {
+  const ctx = useContext(AnimationContext);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableFn = useCallback(fn, deps);
+  useEffect(() => {
+    if (!ctx) return;
+    return ctx.register(stableFn);
+  }, [ctx, stableFn]);
+}
 
 const GROUP_COLORS: Record<string, string> = {
   routes: "#3b82f6",
@@ -28,7 +41,7 @@ function getNodeColor(node: LayoutNode): string {
   return (GROUP_COLORS[group] ?? GROUP_COLORS[firstSegment] ?? GROUP_COLORS.default) as string;
 }
 
-function NodeMesh({
+const NodeMesh = memo(function NodeMesh({
   node,
   isSelected,
   isHovered,
@@ -49,40 +62,32 @@ function NodeMesh({
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const haloRef = useRef<THREE.Mesh>(null);
-  const color = getNodeColor(node);
+  const color = useMemo(() => getNodeColor(node), [node]);
   const targetScale = isSelected ? 1.4 : isHovered ? 1.2 : 1;
 
-  useFrame((state) => {
-    if (!meshRef.current) return;
-    meshRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
-    if (isSelected) {
-      meshRef.current.rotation.y = state.clock.elapsedTime * 0.5;
+  // Single callback per component — registered into the scene-level animation loop
+  useAnimation((t) => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    mesh.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
+    if (isSelected) mesh.rotation.y = t * 0.5;
+    const halo = haloRef.current;
+    if (halo) {
+      const pulse = 1.08 + Math.sin(t * 2.4) * 0.08;
+      halo.scale.setScalar(targetScale * pulse);
     }
-    if (haloRef.current) {
-      const pulse = 1.08 + Math.sin(state.clock.elapsedTime * 2.4) * 0.08;
-      haloRef.current.scale.setScalar(targetScale * pulse);
-    }
-  });
+  }, [isSelected, targetScale]);
 
   return (
     <group position={[node.x, node.y, node.z]}>
       <mesh
         ref={meshRef}
-        onClick={(e) => {
-          e.stopPropagation();
-          onClick();
-        }}
-        onContextMenu={(e) => {
-          e.stopPropagation();
-          onContextMenu(e.nativeEvent);
-        }}
-        onPointerOver={(e) => {
-          e.stopPropagation();
-          onPointerOver();
-        }}
+        onClick={(e) => { e.stopPropagation(); onClick(); }}
+        onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e.nativeEvent); }}
+        onPointerOver={(e) => { e.stopPropagation(); onPointerOver(); }}
         onPointerOut={onPointerOut}
       >
-        <sphereGeometry args={[node.radius, 16, 16]} />
+        <sphereGeometry args={[node.radius, 12, 12]} />
         <meshStandardMaterial
           color={color}
           emissive={color}
@@ -93,7 +98,7 @@ function NodeMesh({
       </mesh>
       {(isSelected || isHovered) && (
         <mesh ref={haloRef}>
-          <sphereGeometry args={[node.radius * 1.8, 24, 24]} />
+          <sphereGeometry args={[node.radius * 1.8, 16, 16]} />
           <meshBasicMaterial color={color} transparent opacity={isSelected ? 0.16 : 0.1} depthWrite={false} />
         </mesh>
       )}
@@ -116,49 +121,36 @@ function NodeMesh({
       )}
     </group>
   );
-}
+});
 
 function EdgeLine({ source, target, active }: { source: LayoutNode; target: LayoutNode; active: boolean }) {
   const points = useMemo(
-    () => [
-      new THREE.Vector3(source.x, source.y, source.z),
-      new THREE.Vector3(target.x, target.y, target.z),
-    ],
-    [source, target]
+    () => [new THREE.Vector3(source.x, source.y, source.z), new THREE.Vector3(target.x, target.y, target.z)],
+    [source.x, source.y, source.z, target.x, target.y, target.z],
   );
+  const color = useMemo(() => getNodeColor(target), [target]);
 
-  const color = getNodeColor(target);
-
-  return (
-    <Line
-      points={points}
-      color={color}
-      lineWidth={active ? 1.1 : 0.45}
-      transparent
-      opacity={active ? 0.72 : 0.26}
-    />
-  );
+  return <Line points={points} color={color} lineWidth={active ? 1.1 : 0.35} transparent opacity={active ? 0.72 : 0.22} />;
 }
 
 function PulseLine({ source, target, speed = 0.4 }: { source: LayoutNode; target: LayoutNode; speed?: number }) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const start = useMemo(() => new THREE.Vector3(source.x, source.y, source.z), [source]);
-  const end = useMemo(() => new THREE.Vector3(target.x, target.y, target.z), [target]);
+  const start = useMemo(() => new THREE.Vector3(source.x, source.y, source.z), [source.x, source.y, source.z]);
+  const end = useMemo(() => new THREE.Vector3(target.x, target.y, target.z), [target.x, target.y, target.z]);
   const color = useMemo(() => new THREE.Color(getNodeColor(target)), [target]);
   const offsetRef = useRef(Math.random() * 3);
 
-  useFrame((state) => {
+  useAnimation((t) => {
     if (!meshRef.current) return;
-    const t = ((state.clock.elapsedTime * speed + offsetRef.current) % 3) / 3;
-    meshRef.current.position.lerpVectors(start, end, t);
-    const scale = Math.sin(t * Math.PI) * 0.5 + 0.3;
-    meshRef.current.scale.setScalar(scale);
-  });
+    const progress = ((t * speed + offsetRef.current) % 3) / 3;
+    meshRef.current.position.lerpVectors(start, end, progress);
+    meshRef.current.scale.setScalar(Math.sin(progress * Math.PI) * 0.5 + 0.3);
+  }, [speed, start, end]);
 
   return (
     <mesh ref={meshRef}>
-      <sphereGeometry args={[0.15, 8, 8]} />
-      <meshBasicMaterial color={color} transparent opacity={0.9} />
+      <sphereGeometry args={[0.12, 6, 6]} />
+      <meshBasicMaterial color={color} transparent opacity={0.85} />
     </mesh>
   );
 }
@@ -167,14 +159,37 @@ function NeuralBackground() {
   return (
     <>
       <color attach="background" args={["#09090b"]} />
-      <fog attach="fog" args={["#09090b", 20, 60]} />
-      <Stars radius={70} depth={55} count={1800} factor={3} saturation={0} fade speed={0.5} />
+      <Stars radius={70} depth={55} count={1200} factor={3} saturation={0} fade speed={0.5} />
       <ambientLight intensity={0.2} />
       <pointLight position={[10, 10, 10]} intensity={0.5} color="#3b82f6" />
       <pointLight position={[-10, -10, -5]} intensity={0.3} color="#8b5cf6" />
       <pointLight position={[0, 10, -10]} intensity={0.2} color="#10b981" />
     </>
   );
+}
+
+function CameraFit({ nodes }: { nodes: LayoutNode[] }) {
+  const camera = useThree((s) => s.camera);
+
+  useEffect(() => {
+    if (nodes.length === 0) return;
+
+    const center = new THREE.Vector3();
+    for (const n of nodes) center.add(new THREE.Vector3(n.x, n.y, n.z));
+    center.divideScalar(nodes.length);
+
+    let bound = 0;
+    for (const n of nodes) {
+      const d = new THREE.Vector3(n.x, n.y, n.z).distanceTo(center);
+      if (d > bound) bound = d;
+    }
+
+    const dist = Math.max(bound * 2.5, 10);
+    camera.position.set(center.x, center.y + dist * 0.3, center.z + dist);
+    camera.lookAt(center);
+  }, [nodes, camera]);
+
+  return null;
 }
 
 function Scene({
@@ -194,6 +209,20 @@ function Scene({
   onNodeContextMenu: (node: LayoutNode, event: MouseEvent) => void;
   onHover: (id: string | null) => void;
 }) {
+  const animFns = useRef<Set<AnimFn>>(new Set());
+
+  const register = useCallback((fn: AnimFn) => {
+    animFns.current.add(fn);
+    return () => { animFns.current.delete(fn); };
+  }, []);
+
+  const ctx = useMemo(() => ({ register }), [register]);
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
+    animFns.current.forEach((fn) => fn(t));
+  });
+
   const nodeMap = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
   const edgePairs = useMemo(
@@ -206,7 +235,7 @@ function Scene({
           return { id: e.id, source: s, target: t };
         })
         .filter(Boolean) as { id: string; source: LayoutNode; target: LayoutNode }[],
-    [edges, nodeMap]
+    [edges, nodeMap],
   );
 
   const visibleEdgePairs = useMemo(() => edgePairs.slice(0, MAX_VISIBLE_EDGES), [edgePairs]);
@@ -219,6 +248,7 @@ function Scene({
 
   const activeEdgeIds = useMemo(() => new Set(activeEdgePairs.map((ep) => ep.id)), [activeEdgePairs]);
   const pulseEdgePairs = useMemo(() => activeEdgePairs.slice(0, MAX_PULSE_EDGES), [activeEdgePairs]);
+
   const labeledIds = useMemo(() => {
     const labels = new Set<string>();
     if (selectedId) labels.add(selectedId);
@@ -229,31 +259,26 @@ function Scene({
     return labels;
   }, [hoveredId, nodes, selectedId]);
 
-  const handlePointerMiss = useCallback(() => {
-    onSelect(null);
-  }, [onSelect]);
-
+  const handlePointerMiss = useCallback(() => onSelect(null), [onSelect]);
   const handleNodeContextMenu = useCallback(
     (node: LayoutNode, event: MouseEvent) => {
       event.preventDefault();
       onSelect(node.id);
       onNodeContextMenu(node, event);
     },
-    [onNodeContextMenu, onSelect]
+    [onNodeContextMenu, onSelect],
   );
 
   return (
-    <>
+    <AnimationContext.Provider value={ctx}>
+      <CameraFit nodes={nodes} />
       <NeuralBackground />
       <group onPointerMissed={handlePointerMiss}>
         {visibleEdgePairs.map((ep) => (
           <EdgeLine key={ep.id} source={ep.source} target={ep.target} active={activeEdgeIds.has(ep.id)} />
         ))}
         {pulseEdgePairs.map((ep) => (
-          <PulseLine key={`pulse-${ep.id}-1`} source={ep.source} target={ep.target} speed={0.3} />
-        ))}
-        {pulseEdgePairs.map((ep) => (
-          <PulseLine key={`pulse-${ep.id}-2`} source={ep.source} target={ep.target} speed={0.5} />
+          <PulseLine key={`pulse-${ep.id}`} source={ep.source} target={ep.target} speed={0.3} />
         ))}
         {nodes.map((node) => (
           <NodeMesh
@@ -269,8 +294,16 @@ function Scene({
           />
         ))}
       </group>
-      <OrbitControls enablePan enableZoom enableRotate enableDamping dampingFactor={0.05} />
-    </>
+      <OrbitControls
+        enablePan
+        enableZoom
+        enableRotate
+        enableDamping
+        dampingFactor={0.08}
+        minDistance={2}
+        maxDistance={500}
+      />
+    </AnimationContext.Provider>
   );
 }
 
@@ -317,8 +350,8 @@ export function GraphCanvas({
       }}
     >
       <Canvas
-        camera={{ position: [0, 0, 25], fov: 50 }}
-        dpr={[1, 1.75]}
+        camera={{ position: [0, 5, 30], fov: 50 }}
+        dpr={[1, 1.5]}
         gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
       >
         <Scene

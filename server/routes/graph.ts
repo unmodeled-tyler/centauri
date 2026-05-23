@@ -3,7 +3,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { readFile, readdir } from "fs/promises";
 import { resolve, basename, dirname, relative, extname } from "path";
-import { validateGitRepo, createHttpError } from "../utils/validation.js";
+import { validateGitRepo } from "../utils/validation.js";
 import type { GraphNode, GraphEdge, GraphData } from "../../src/types/graph.js";
 
 const execFileAsync = promisify(execFile);
@@ -85,10 +85,6 @@ function normalizeLabel(label: string | undefined): string {
 async function runCypher(alias: string, query: string): Promise<Record<string, string>[]> {
   if (!/^[a-zA-Z0-9._-]+$/.test(alias)) {
     throw new Error("Invalid alias");
-  }
-  // Defensive: reject queries containing shell metacharacters
-  if (/[;&|`$(){}!<>]/.test(query)) {
-    throw createHttpError(400, "Invalid query");
   }
   const { stdout } = await execFileAsync(GITNEXUS_BIN, [...GITNEXUS_ARGS, "cypher", "-r", alias, query]);
   const parsed = JSON.parse(stdout);
