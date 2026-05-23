@@ -5,8 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "centauri": "./bin/quanta-control.js",
-    "quanta-control": "./bin/quanta-control.js"
+    "centauri": "./bin/centauri.js"
   },
   "files": [
     "bin",
@@ -20,9 +19,9 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "dev": "node ./bin/quanta-control-dev.js",
+    "dev": "node ./bin/centauri-dev.js",
     "dev:web": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:cli": "node ./bin/quanta-control-dev.js",
+    "dev:cli": "node ./bin/centauri-dev.js",
     "dev:client": "vite",
     "dev:desktop": "npx electron ./electron/main.js",
     "dev:server": "tsx watch server/index.ts",
@@ -30,7 +29,7 @@
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
     "start": "node ./build/server/server/index.js",
-    "start:cli": "node ./bin/quanta-control.js",
+    "start:cli": "node ./bin/centauri.js",
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",

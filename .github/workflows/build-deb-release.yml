@@ -102,7 +102,7 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           cd /opt/centauri
-          exec node /opt/centauri/bin/quanta-control.js "$@"
+          exec node /opt/centauri/bin/centauri.js "$@"
           EOF
           chmod 0755 "$PKG_ROOT/usr/bin/centauri"
 

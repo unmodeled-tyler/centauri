@@ -145,7 +145,7 @@ for (let index = 0; index < args.length; index += 1) {
 
 process.env.PORT = port;
 process.env.HOST = host;
-process.env.QUANTA_CONTROL_CLI = "1";
+process.env.CENTAURI_CLI = "1";
 
 const { startServer } = await import(serverEntry);
 const { server } = await startServer({

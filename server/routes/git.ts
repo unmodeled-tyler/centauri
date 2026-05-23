@@ -597,7 +597,7 @@ router.post("/gitignore", async (req, res, next) => {
         await gitInRepo(resolvedRepo, ["rm", "--cached", "--quiet", "--", ...nonDirPatterns]);
       }
     }).catch((err) => {
-      console.warn("[quanta-control] Failed to remove cached patterns:", err);
+      console.warn("[centauri] Failed to remove cached patterns:", err);
     });
 
     afterWrite(resolvedRepo);
@@ -761,7 +761,7 @@ router.post("/rebase-interactive", async (req, res, next) => {
       if (result.exitCode !== 0) {
         const hasConflicts = result.stderr.includes("CONFLICT") || result.stderr.includes("could not apply");
         await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["rebase", "--abort"])).catch((err) => {
-          console.warn("[quanta-control] Failed to abort rebase:", err);
+          console.warn("[centauri] Failed to abort rebase:", err);
         });
 
         return res.json({
@@ -893,7 +893,7 @@ router.post("/cherry-pick", async (req, res, next) => {
     if (result.exitCode !== 0) {
       // Auto-abort on conflict so we don't leave the repo in a bad state
       await withGitLock(resolvedRepo, () => gitInRepo(resolvedRepo, ["cherry-pick", "--abort"])).catch((err) => {
-        console.warn("[quanta-control] Failed to abort cherry-pick:", err);
+        console.warn("[centauri] Failed to abort cherry-pick:", err);
       });
       return res.status(500).json({ error: result.stderr || "Cherry-pick failed" });
     }

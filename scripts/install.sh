@@ -64,7 +64,7 @@ install_app() {
 
 install_launcher() {
   mkdir -p "$BIN_DIR"
-  ln -sf "$INSTALL_DIR/bin/quanta-control.js" "$BIN_DIR/centauri"
+  ln -sf "$INSTALL_DIR/bin/centauri.js" "$BIN_DIR/centauri"
 }
 
 print_success() {
@@ -94,7 +94,7 @@ require_cmd node
 require_cmd npm
 check_node_version
 
-if [ -f "$LOCAL_SOURCE_DIR/package.json" ] && [ -f "$LOCAL_SOURCE_DIR/bin/quanta-control.js" ]; then
+if [ -f "$LOCAL_SOURCE_DIR/package.json" ] && [ -f "$LOCAL_SOURCE_DIR/bin/centauri.js" ]; then
   echo "Installing ${APP_NAME} from local checkout"
   copy_local_checkout
 else

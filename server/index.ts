@@ -23,7 +23,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 // ── Token Persistence ──────────────────────────────────────────────────────────
 
-const TOKEN_DIR = resolve(homedir(), ".config", "quanta-control");
+const TOKEN_DIR = resolve(homedir(), ".config", "centauri");
 const TOKEN_FILE = resolve(TOKEN_DIR, "tokens.json");
 
 interface TokenPair {
@@ -50,7 +50,7 @@ function persistTokens(auth: string, csrf: string): void {
     const payload: TokenPair = { authToken: auth, csrfToken: csrf, createdAt: Date.now() };
     writeFileSync(TOKEN_FILE, JSON.stringify(payload), { mode: 0o600, encoding: "utf-8" });
   } catch (err) {
-    console.warn("[quanta-control] Failed to persist tokens:", err);
+    console.warn("[centauri] Failed to persist tokens:", err);
   }
 }
 
@@ -521,6 +521,6 @@ export async function startServer(options?: { port?: number; host?: string }) {
   });
 }
 
-if (process.env.QUANTA_CONTROL_CLI !== "1") {
+if (process.env.CENTAURI_CLI !== "1") {
   void startServer();
 }

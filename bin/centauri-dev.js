@@ -144,7 +144,7 @@ const baseEnv = {
   ...process.env,
   BROWSER: "none",
   HOST: "127.0.0.1",
-  QUANTA_CONTROL_DEV_CLI: "1",
+  CENTAURI_DEV_CLI: "1",
 };
 
 process.on("SIGINT", () => shutdown(0));
@@ -166,8 +166,8 @@ startManagedProcess("api", npmCommand, ["run", "dev:server"], {
 
 startManagedProcess("web", npmCommand, ["run", "dev:client"], {
   ...baseEnv,
-  QUANTA_CONTROL_CLIENT_PORT: String(clientPort),
-  QUANTA_CONTROL_SERVER_PORT: String(apiPort),
+  CENTAURI_CLIENT_PORT: String(clientPort),
+  CENTAURI_SERVER_PORT: String(apiPort),
 });
 
 await waitFor(`http://127.0.0.1:${apiPort}/api/health`, "API server");

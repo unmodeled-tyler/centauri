@@ -139,7 +139,7 @@ function registerLifecycle() {
     const registered = globalShortcut.register(TOGGLE_SHORTCUT, toggleMainWindow);
     if (!registered) {
       console.warn(
-        `[quanta-control] Failed to register global shortcut "${TOGGLE_SHORTCUT}" (likely already taken by another app).`,
+        `[centauri] Failed to register global shortcut "${TOGGLE_SHORTCUT}" (likely already taken by another app).`,
       );
     }
   });

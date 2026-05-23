@@ -36,7 +36,7 @@ class RepoWatcherInstance {
       .on("change", () => this.onChange())
       .on("unlink", () => this.onChange())
       .on("error", (err) => {
-        console.warn(`[quanta-control] Repo watcher disabled for ${this.repoPath}:`, err);
+        console.warn(`[centauri] Repo watcher disabled for ${this.repoPath}:`, err);
         this.stop();
         WATCHER_MAP.delete(this.repoPath);
       });
