@@ -8,34 +8,18 @@ import { useSettingsStore } from "../../stores/settingsStore";
 import { THEMES } from "../../themes/themes";
 import { CentauriMark } from "../brand/CentauriMark";
 import * as api from "../../services/api";
-import type { AgentConnection } from "../../hooks/useAgentSession";
+import { stripAnsi } from "../../utils/ansi";
+import { loadStoredAgentOption, storeAgentOption } from "../../utils/agentOptions";
+import type { AgentConnection } from "../../types/agents";
 
 const COMMIT_MESSAGE_START = "CENTAURI_COMMIT_MESSAGE_START";
 const COMMIT_MESSAGE_END = "CENTAURI_COMMIT_MESSAGE_END";
 const AGENT_RESPONSE_TIMEOUT_MS = 120_000;
-const CODEX_YOLO_KEY = "centauri-agent-codex-yolo";
-const CLAUDE_SKIP_PERMISSIONS_KEY = "centauri-agent-claude-skip-permissions";
-const CODEX_YOLO_FLAG = "--yolo";
-const CLAUDE_SKIP_PERMISSIONS_FLAG = "--dangerously-skip-permissions";
-const ANSI_PATTERN = new RegExp(String.raw`\u001b\[[0-?]*[ -/]*[@-~]`, "g");
-
-function loadStoredBoolean(key: string) {
-  try {
-    return localStorage.getItem(key) === "true";
-  } catch {
-    return false;
-  }
-}
-
 interface PendingCommitMessageRequest {
   buffer: string;
   resolve: (message: string) => void;
   reject: (err: Error) => void;
   timeoutId: number;
-}
-
-function stripAnsi(value: string) {
-  return value.replace(ANSI_PATTERN, "");
 }
 
 function cleanCommitMessage(value: string) {
@@ -91,8 +75,7 @@ export function AgentTerminalView({
   const [loadingTools, setLoadingTools] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [connectedTool, setConnectedTool] = useState<api.AgentTool | null>(null);
-  const [codexYolo, setCodexYolo] = useState(() => loadStoredBoolean(CODEX_YOLO_KEY));
-  const [claudeSkipPermissions, setClaudeSkipPermissions] = useState(() => loadStoredBoolean(CLAUDE_SKIP_PERMISSIONS_KEY));
+  const [enabledOptions, setEnabledOptions] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const theme = useSettingsStore((s) => s.settings.theme);
   const defaultAgent = useSettingsStore((s) => s.settings.defaultAgent);
@@ -103,14 +86,11 @@ export function AgentTerminalView({
     () => tools.find((tool) => tool.id === selectedTool) ?? null,
     [selectedTool, tools],
   );
-  const getLaunchArgs = useCallback((toolId: string) => {
-    if (toolId === "codex" && codexYolo) return [CODEX_YOLO_FLAG];
-    if (toolId === "claude" && claudeSkipPermissions) return [CLAUDE_SKIP_PERMISSIONS_FLAG];
-    return [];
-  }, [claudeSkipPermissions, codexYolo]);
   const selectedLaunchArgs = useMemo(
-    () => getLaunchArgs(selectedTool),
-    [getLaunchArgs, selectedTool],
+    () => selectedToolMeta?.launchOptions
+      .filter((option) => enabledOptions[option.id] ?? loadStoredAgentOption(option.id))
+      .map((option) => option.terminalArg) ?? [],
+    [enabledOptions, selectedToolMeta],
   );
 
   const clearPendingCommitMessage = (err?: Error) => {
@@ -132,7 +112,7 @@ export function AgentTerminalView({
     pending.resolve(message);
   };
 
-  const generateCommitMessageWithAgent = (prompt: string) => {
+  const generateCommitMessageWithAgent = useCallback((prompt: string) => {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error("Agent terminal is not connected."));
@@ -148,7 +128,7 @@ export function AgentTerminalView({
       pendingCommitMessageRef.current = { buffer: "", resolve, reject, timeoutId };
       socket.send(JSON.stringify({ type: "input", data: `${wrapCommitMessagePrompt(prompt)}\r` }));
     });
-  };
+  }, []);
 
   const loadTools = async () => {
     setLoadingTools(true);
@@ -173,13 +153,6 @@ export function AgentTerminalView({
   useEffect(() => {
     void loadTools();
   }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(CODEX_YOLO_KEY, String(codexYolo));
-      localStorage.setItem(CLAUDE_SKIP_PERMISSIONS_KEY, String(claudeSkipPermissions));
-    } catch {}
-  }, [claudeSkipPermissions, codexYolo]);
 
   useEffect(() => {
     return () => {
@@ -214,7 +187,7 @@ export function AgentTerminalView({
     };
   }, []);
 
-  const disconnect = () => {
+  const disconnect = useCallback(() => {
     clearPendingCommitMessage(new Error("Agent terminal disconnected."));
     socketRef.current?.close();
     socketRef.current = null;
@@ -222,9 +195,9 @@ export function AgentTerminalView({
     setConnecting(false);
     onConnectionChange?.(null);
     void refreshRepo();
-  };
+  }, [onConnectionChange, refreshRepo]);
 
-  const startSession = async () => {
+  const startSession = useCallback(async () => {
     if (!repoPath || !selectedTool) return;
     const tool = tools.find((candidate) => candidate.id === selectedTool);
     if (!tool) return;
@@ -254,7 +227,9 @@ export function AgentTerminalView({
         window.requestAnimationFrame(() => fit.fit());
       }
 
-      const launchFlags = getLaunchArgs(tool.id);
+      const launchFlags = tool.launchOptions
+        .filter((option) => enabledOptions[option.id] ?? loadStoredAgentOption(option.id))
+        .map((option) => option.terminalArg);
 
       terminal.writeln(`Launching ${tool.label} in ${repoPath}`);
       terminal.writeln("────────────────────────────────────────────────────────────");
@@ -308,14 +283,14 @@ export function AgentTerminalView({
       setError(err instanceof Error ? err.message : "Failed to start agent");
       setConnecting(false);
     }
-  };
+  }, [enabledOptions, generateCommitMessageWithAgent, onConnectionChange, refreshRepo, repoPath, selectedTool, terminalTheme, tools]);
 
   // Auto-launch default agent on mount
   useEffect(() => {
     if (autoLaunchedRef.current || loadingTools || connecting || connectedTool || !repoPath || !selectedTool || !defaultAgent) return;
     autoLaunchedRef.current = true;
     startSession();
-  }, [loadingTools, repoPath, selectedTool]);
+  }, [connectedTool, connecting, defaultAgent, loadingTools, repoPath, selectedTool, startSession]);
 
   return (
     <div ref={panelRef} className="flex h-full min-w-0 flex-col overflow-hidden bg-zinc-950">
@@ -353,35 +328,25 @@ export function AgentTerminalView({
               ))}
             </select>
 
-            {selectedTool === "codex" && !connectedTool && (
+            {!connectedTool && selectedToolMeta?.launchOptions.map((option) => (
               <label
+                key={option.id}
                 className="inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900"
-                title={`Launch Codex with ${CODEX_YOLO_FLAG}`}
+                title={`Launch ${selectedToolMeta.label} with ${option.terminalArg}`}
               >
                 <input
                   type="checkbox"
-                  checked={codexYolo}
-                  onChange={(event) => setCodexYolo(event.target.checked)}
+                  checked={enabledOptions[option.id] ?? loadStoredAgentOption(option.id)}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setEnabledOptions((current) => ({ ...current, [option.id]: checked }));
+                    storeAgentOption(option.id, checked);
+                  }}
                   className="h-3.5 w-3.5 accent-emerald-500"
                 />
-                Yolo
+                {option.label}
               </label>
-            )}
-
-            {selectedTool === "claude" && !connectedTool && (
-              <label
-                className="inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900"
-                title={`Launch Claude Code with ${CLAUDE_SKIP_PERMISSIONS_FLAG}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={claudeSkipPermissions}
-                  onChange={(event) => setClaudeSkipPermissions(event.target.checked)}
-                  className="h-3.5 w-3.5 accent-emerald-500"
-                />
-                Skip Permissions
-              </label>
-            )}
+            ))}
 
             {!connectedTool && selectedToolMeta && (
               <div className="w-full truncate text-right font-mono text-[10px] text-zinc-600 sm:w-auto" title={[selectedToolMeta.command, ...selectedLaunchArgs].join(" ")}>

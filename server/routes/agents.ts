@@ -1,47 +1,19 @@
-import { execFile, spawn } from "child_process";
 import { existsSync, statSync } from "fs";
 import { Server } from "http";
-import { promisify } from "util";
 import express from "express";
 import { RawData, WebSocket, WebSocketServer } from "ws";
 import * as pty from "node-pty";
 import { gitInRepo } from "../services/gitExecutor.js";
 import { validateGitRepo } from "../utils/validation.js";
+import {
+  commandPath,
+  detectAgentTools,
+  resolveAgentTool,
+  terminalArgsForTool,
+} from "../services/agentTools.js";
+import { runHeadlessAgentChat, type AgentChatMessage } from "../services/agentChatRunner.js";
 
-const execFileAsync = promisify(execFile);
 const MAX_AGENT_CONTEXT_CHARS = 12000;
-const MAX_AGENT_CHAT_OUTPUT_CHARS = 120000;
-const AGENT_CHAT_TIMEOUT_MS = 10 * 60 * 1000;
-
-export interface AgentTool {
-  id: string;
-  label: string;
-  command: string;
-  description: string;
-}
-
-interface DetectedAgentTool extends AgentTool {
-  available: boolean;
-  path?: string;
-}
-
-const AGENT_TOOLS: AgentTool[] = [
-  { id: "claude", label: "Claude Code", command: "claude", description: "Anthropic's Claude coding CLI" },
-  { id: "codex", label: "Codex", command: "codex", description: "OpenAI Codex CLI" },
-  { id: "pi", label: "pi", command: "pi", description: "pi coding agent" },
-  { id: "opencode", label: "OpenCode", command: "opencode", description: "OpenCode terminal coding agent" },
-  { id: "aider", label: "Aider", command: "aider", description: "Aider pair-programming CLI" },
-  { id: "gemini", label: "Gemini CLI", command: "gemini", description: "Google Gemini CLI" },
-  { id: "cursor-agent", label: "Cursor Agent", command: "cursor-agent", description: "Cursor's command-line coding agent" },
-  { id: "amp", label: "Amp", command: "amp", description: "Sourcegraph Amp coding agent" },
-  { id: "droid", label: "Droid", command: "droid", description: "Factory Droid coding agent" },
-  { id: "hermes", label: "Hermes", command: "hermes", description: "Hermes coding agent" },
-  { id: "openclaw", label: "OpenClaw", command: "openclaw", description: "OpenClaw coding agent" },
-];
-
-function resolveTool(id: string): AgentTool | undefined {
-  return AGENT_TOOLS.find((tool) => tool.id === id);
-}
 
 function requestedLaunchArgs(url: URL) {
   const rawArgs = url.searchParams.get("args");
@@ -55,120 +27,22 @@ function requestedLaunchArgs(url: URL) {
   return Array.isArray(requested) ? requested.filter((arg): arg is string => typeof arg === "string") : [];
 }
 
-function launchArgsForTool(toolId: string, requested: string[]) {
-  const allowedByTool: Record<string, Set<string>> = {
-    codex: new Set(["--yolo"]),
-    claude: new Set(["--dangerously-skip-permissions"]),
-  };
-  const allowed = allowedByTool[toolId];
-  if (!allowed) return [];
-  return requested.filter((arg) => allowed.has(arg));
-}
-
-function chatArgsForTool(toolId: string, requested: string[]) {
-  if (toolId === "codex") {
-    const bypassSandbox = requested.includes("--yolo")
-      ? ["--dangerously-bypass-approvals-and-sandbox"]
-      : [];
-    return ["exec", "--color", "never", ...bypassSandbox, "-"];
-  }
-
-  if (toolId === "claude") {
-    const bypassPermissions = requested.includes("--dangerously-skip-permissions")
-      ? ["--dangerously-skip-permissions"]
-      : [];
-    return ["-p", "--output-format", "text", ...bypassPermissions];
-  }
-
-  return null;
-}
-
-function buildChatPrompt(history: Array<{ role: string; content: string }>, prompt: string) {
-  const turns = history
-    .filter((message) => (message.role === "user" || message.role === "agent") && message.content.trim())
-    .slice(-12)
-    .map((message) => `${message.role === "user" ? "User" : "Assistant"}:\n${message.content.trim()}`);
-
-  return [
-    "You are being used through Centauri's streamlined chat interface.",
-    "Respond naturally to the user's latest message while working in the current repository.",
-    turns.length ? ["Conversation so far:", ...turns].join("\n\n") : "",
-    "Latest user message:",
-    prompt,
-  ].filter(Boolean).join("\n\n");
-}
-
-function runAgentChat(command: string, args: string[], cwd: string, input: string) {
-  return new Promise<string>((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd,
-      env: { ...process.env, TERM: "dumb", NO_COLOR: "1" },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-    const timeout = setTimeout(() => {
-      settled = true;
-      child.kill();
-      reject(new Error("Agent response timed out."));
-    }, AGENT_CHAT_TIMEOUT_MS);
-
-    const append = (current: string, chunk: Buffer) =>
-      (current + chunk.toString("utf8")).slice(-MAX_AGENT_CHAT_OUTPUT_CHARS);
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout = append(stdout, chunk);
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr = append(stderr, chunk);
-    });
-    child.stdin.end(input);
-    child.on("error", (err) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      reject(err);
-    });
-    child.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      if (code === 0) {
-        resolve(stdout.trim());
-        return;
-      }
-      reject(new Error(stderr.trim() || stdout.trim() || `Agent exited with code ${code ?? "unknown"}`));
-    });
-  });
-}
-
-async function commandPath(command: string): Promise<string | undefined> {
-  const lookup = process.platform === "win32" ? "where" : "which";
-  try {
-    const { stdout } = await execFileAsync(lookup, [command], { timeout: 2_000 });
-    const first = stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
-    return first;
-  } catch {
-    return undefined;
-  }
-}
-
-async function detectAgentTools(): Promise<DetectedAgentTool[]> {
-  return Promise.all(
-    AGENT_TOOLS.map(async (tool) => {
-      const path = await commandPath(tool.command);
-      return { ...tool, available: Boolean(path), ...(path ? { path } : {}) };
-    }),
-  );
-}
-
 function isDirectory(path: string): boolean {
   try {
     return existsSync(path) && statSync(path).isDirectory();
   } catch {
     return false;
   }
+}
+
+function parseChatHistory(value: unknown): AgentChatMessage[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((message) => {
+    if (!message || typeof message !== "object") return [];
+    const { role, content } = message as { role?: unknown; content?: unknown };
+    if ((role === "user" || role === "agent") && typeof content === "string") return [{ role, content }];
+    return [];
+  });
 }
 
 function send(ws: WebSocket, payload: unknown) {
@@ -258,36 +132,29 @@ agentRoutes.get("/commit-message-prompt", async (req, res, next) => {
   }
 });
 
-agentRoutes.post("/chat", express.json(), async (req, res, next) => {
+agentRoutes.post("/chat", async (req, res, next) => {
   try {
-    const { repo, tool: toolId, prompt, history, args } = req.body as {
-      repo?: string;
-      tool?: string;
-      prompt?: string;
-      history?: Array<{ role: string; content: string }>;
-      args?: string[];
-    };
+    const { repo, tool: toolId, prompt, history, args } = req.body as Record<string, unknown>;
 
-    if (!repo) return res.status(400).json({ error: "repo path required" });
-    if (!toolId) return res.status(400).json({ error: "agent tool required" });
-    if (!prompt?.trim()) return res.status(400).json({ error: "message required" });
+    if (typeof repo !== "string" || !repo) return res.status(400).json({ error: "repo path required" });
+    if (typeof toolId !== "string" || !toolId) return res.status(400).json({ error: "agent tool required" });
+    if (typeof prompt !== "string" || !prompt.trim()) return res.status(400).json({ error: "message required" });
 
-    const tool = resolveTool(toolId);
+    const tool = resolveAgentTool(toolId);
     if (!tool) return res.status(400).json({ error: "Unknown agent tool" });
 
     const resolvedRepo = await validateGitRepo(repo);
     const path = await commandPath(tool.command);
     if (!path) return res.status(400).json({ error: `${tool.label} is not available on PATH` });
 
-    const chatPrompt = buildChatPrompt(Array.isArray(history) ? history : [], prompt.trim());
-    const launchArgs = chatArgsForTool(tool.id, Array.isArray(args) ? args : []);
-    if (!launchArgs) {
-      return res.status(400).json({
-        error: `${tool.label} does not expose a supported non-interactive chat mode yet. Use Agent Terminal for this tool.`,
-      });
-    }
-
-    const response = await runAgentChat(path, launchArgs, resolvedRepo, chatPrompt);
+    const response = await runHeadlessAgentChat({
+      tool,
+      commandPath: path,
+      cwd: resolvedRepo,
+      prompt: prompt.trim(),
+      history: parseChatHistory(history),
+      requestedArgs: Array.isArray(args) ? args.filter((arg): arg is string => typeof arg === "string") : [],
+    });
     res.json({ message: response || "(No response)" });
   } catch (err) {
     next(err);
@@ -316,7 +183,7 @@ export function setupAgentTerminal(server: Server, authToken: string) {
   wss.on("connection", async (ws: WebSocket, _request: unknown, url: URL) => {
     const toolId = url.searchParams.get("tool") ?? "";
     const repo = url.searchParams.get("repo") ?? "";
-    const tool = resolveTool(toolId);
+    const tool = resolveAgentTool(toolId);
 
     if (!tool) {
       send(ws, { type: "error", message: "Unknown agent tool" });
@@ -338,7 +205,7 @@ export function setupAgentTerminal(server: Server, authToken: string) {
     }
 
     const requestedArgs = requestedLaunchArgs(url);
-    const launchArgs = launchArgsForTool(tool.id, requestedArgs);
+    const launchArgs = terminalArgsForTool(tool, requestedArgs);
     const term = pty.spawn(path, launchArgs, {
       name: "xterm-256color",
       cols: 100,

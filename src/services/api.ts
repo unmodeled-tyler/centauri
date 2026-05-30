@@ -399,8 +399,20 @@ export interface AgentTool {
   label: string;
   command: string;
   description: string;
+  capabilities: {
+    terminal: boolean;
+    chat: boolean;
+  };
+  launchOptions: AgentLaunchOption[];
   available: boolean;
   path?: string;
+}
+
+export interface AgentLaunchOption {
+  id: string;
+  label: string;
+  terminalArg: string;
+  chatArgs: string[];
 }
 
 export function getAgentTools() {

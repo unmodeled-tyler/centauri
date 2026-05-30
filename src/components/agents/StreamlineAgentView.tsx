@@ -1,27 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Cable, Loader2, Play, RefreshCw, MessageSquare } from "lucide-react";
+import { Cable, Play, RefreshCw, MessageSquare } from "lucide-react";
 import { useRepoStore } from "../../stores/repoStore";
 import { useSettingsStore } from "../../stores/settingsStore";
-import { useAgentSession } from "../../hooks/useAgentSession";
+import { useStreamlineAgentChat } from "../../hooks/useStreamlineAgentChat";
 import StreamlineMessageComponent from "./StreamlineMessage";
 import StreamlineInputComponent from "./StreamlineInput";
-import type { AgentConnection } from "../../hooks/useAgentSession";
+import { loadStoredAgentOption, storeAgentOption } from "../../utils/agentOptions";
+import type { AgentConnection } from "../../types/agents";
 import type { AgentChatMessage } from "../../services/api";
 import type { StreamlineMessage } from "./StreamlineMessage";
-
-const CODEX_YOLO_KEY = "centauri-agent-codex-yolo";
-const CLAUDE_SKIP_PERMISSIONS_KEY = "centauri-agent-claude-skip-permissions";
-const CODEX_YOLO_FLAG = "--yolo";
-const CLAUDE_SKIP_PERMISSIONS_FLAG = "--dangerously-skip-permissions";
-const CHAT_CAPABLE_AGENT_IDS = new Set(["codex", "claude"]);
-
-function loadStoredBoolean(key: string) {
-  try {
-    return localStorage.getItem(key) === "true";
-  } catch {
-    return false;
-  }
-}
 
 export function StreamlineAgentView({
   onConnectionChange,
@@ -34,24 +21,23 @@ export function StreamlineAgentView({
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const [messages, setMessages] = useState<StreamlineMessage[]>([]);
   const [responding, setResponding] = useState(false);
-  const [codexYolo, setCodexYolo] = useState(() => loadStoredBoolean(CODEX_YOLO_KEY));
-  const [claudeSkipPermissions, setClaudeSkipPermissions] = useState(() => loadStoredBoolean(CLAUDE_SKIP_PERMISSIONS_KEY));
+  const [enabledOptions, setEnabledOptions] = useState<Record<string, boolean>>({});
   const defaultAgent = useSettingsStore((s) => s.settings.defaultAgent);
   const autoLaunchedRef = useRef(false);
 
   const {
     tools,
     selectedToolId,
+    selectedTool,
     setSelectedToolId,
     loadingTools,
-    connecting,
     connectedTool,
     error,
     loadTools,
-    startSession,
+    connect,
     disconnect: sessionDisconnect,
     sendInput,
-  } = useAgentSession({
+  } = useStreamlineAgentChat({
     repoPath,
     onConnectionChange: (conn) => {
       if (!conn) refreshRepo();
@@ -60,42 +46,20 @@ export function StreamlineAgentView({
   });
 
   const availableTools = useMemo(
-    () => tools.filter((tool) => tool.available && CHAT_CAPABLE_AGENT_IDS.has(tool.id)),
+    () => tools.filter((tool) => tool.available && tool.capabilities.chat),
     [tools],
-  );
-  const selectedToolMeta = useMemo(
-    () => tools.find((tool) => tool.id === selectedToolId) ?? null,
-    [selectedToolId, tools],
   );
   const selectedToolAvailable = useMemo(
     () => availableTools.some((tool) => tool.id === selectedToolId),
     [availableTools, selectedToolId],
   );
 
-  const getLaunchArgs = useCallback((toolId: string) => {
-    if (toolId === "codex" && codexYolo) return [CODEX_YOLO_FLAG];
-    if (toolId === "claude" && claudeSkipPermissions) return [CLAUDE_SKIP_PERMISSIONS_FLAG];
-    return [];
-  }, [claudeSkipPermissions, codexYolo]);
-
   const selectedLaunchArgs = useMemo(
-    () => getLaunchArgs(selectedToolId),
-    [getLaunchArgs, selectedToolId],
+    () => selectedTool?.launchOptions
+      .filter((option) => enabledOptions[option.id] ?? loadStoredAgentOption(option.id))
+      .map((option) => option.terminalArg) ?? [],
+    [enabledOptions, selectedTool],
   );
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(CODEX_YOLO_KEY, String(codexYolo));
-      localStorage.setItem(CLAUDE_SKIP_PERMISSIONS_KEY, String(claudeSkipPermissions));
-    } catch {}
-  }, [claudeSkipPermissions, codexYolo]);
-
-  useEffect(() => {
-    if (loadingTools || availableTools.length === 0) return;
-    if (availableTools.some((tool) => tool.id === selectedToolId)) return;
-    const firstTool = availableTools[0];
-    if (firstTool) setSelectedToolId(firstTool.id);
-  }, [availableTools, loadingTools, selectedToolId, setSelectedToolId]);
 
   useEffect(() => {
     if (connectedTool) {
@@ -121,7 +85,6 @@ export function StreamlineAgentView({
     if (
       autoLaunchedRef.current ||
       loadingTools ||
-      connecting ||
       connectedTool ||
       !repoPath ||
       !selectedToolId ||
@@ -129,8 +92,8 @@ export function StreamlineAgentView({
       !defaultAgent
     ) return;
     autoLaunchedRef.current = true;
-    startSession();
-  }, [connectedTool, connecting, defaultAgent, loadingTools, repoPath, selectedToolAvailable, selectedToolId, startSession]);
+    connect();
+  }, [connect, connectedTool, defaultAgent, loadingTools, repoPath, selectedToolAvailable, selectedToolId]);
 
   const disconnect = useCallback(() => {
     sessionDisconnect();
@@ -216,39 +179,29 @@ export function StreamlineAgentView({
               ))}
             </select>
 
-            {selectedToolId === "codex" && !connectedTool && (
+            {!connectedTool && selectedTool?.launchOptions.map((option) => (
               <label
+                key={option.id}
                 className="inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900"
-                title={`Launch Codex with ${CODEX_YOLO_FLAG}`}
+                title={`Launch ${selectedTool.label} with ${option.terminalArg}`}
               >
                 <input
                   type="checkbox"
-                  checked={codexYolo}
-                  onChange={(event) => setCodexYolo(event.target.checked)}
+                  checked={enabledOptions[option.id] ?? loadStoredAgentOption(option.id)}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setEnabledOptions((current) => ({ ...current, [option.id]: checked }));
+                    storeAgentOption(option.id, checked);
+                  }}
                   className="h-3.5 w-3.5 accent-emerald-500"
                 />
-                Yolo
+                {option.label}
               </label>
-            )}
+            ))}
 
-            {selectedToolId === "claude" && !connectedTool && (
-              <label
-                className="inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900"
-                title={`Launch Claude Code with ${CLAUDE_SKIP_PERMISSIONS_FLAG}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={claudeSkipPermissions}
-                  onChange={(event) => setClaudeSkipPermissions(event.target.checked)}
-                  className="h-3.5 w-3.5 accent-emerald-500"
-                />
-                Skip Permissions
-              </label>
-            )}
-
-            {!connectedTool && selectedToolMeta && (
-              <div className="w-full truncate text-right font-mono text-[10px] text-zinc-600 sm:w-auto" title={[selectedToolMeta.command, ...selectedLaunchArgs].join(" ")}>
-                {[selectedToolMeta.command, ...selectedLaunchArgs].join(" ")}
+            {!connectedTool && selectedTool && (
+              <div className="w-full truncate text-right font-mono text-[10px] text-zinc-600 sm:w-auto" title={[selectedTool.command, ...selectedLaunchArgs].join(" ")}>
+                {[selectedTool.command, ...selectedLaunchArgs].join(" ")}
               </div>
             )}
 
@@ -262,11 +215,11 @@ export function StreamlineAgentView({
               </button>
             ) : (
               <button
-                onClick={() => void startSession()}
-                disabled={!selectedToolId || !selectedToolAvailable || connecting}
+                onClick={connect}
+                disabled={!selectedToolId || !selectedToolAvailable}
                 className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                <Play className="h-3.5 w-3.5" />
                 Launch
               </button>
             )}
@@ -277,7 +230,7 @@ export function StreamlineAgentView({
       </div>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {!connectedTool && !connecting && messages.length === 0 && (
+        {!connectedTool && messages.length === 0 && (
           <div className="flex flex-1 items-center justify-center p-6">
             <div className="max-w-md rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 text-center shadow-lg shadow-black/20">
               <MessageSquare className="mx-auto h-10 w-10 text-zinc-600" />
@@ -317,12 +270,10 @@ export function StreamlineAgentView({
 
         <StreamlineInputComponent
           onSend={handleSend}
-          disabled={!connectedTool || connecting || responding}
-          busy={connecting || responding}
+          disabled={!connectedTool || responding}
+          busy={responding}
           placeholder={
-            connecting
-              ? "Connecting..."
-              : responding
+            responding
               ? "Waiting for the agent..."
               : !connectedTool
               ? "Launch an agent to start chatting"

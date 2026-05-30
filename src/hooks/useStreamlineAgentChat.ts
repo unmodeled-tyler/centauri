@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentChatMessage, AgentTool } from "../services/api";
 import * as api from "../services/api";
 import { useSettingsStore } from "../stores/settingsStore";
+import type { AgentConnection } from "../types/agents";
 
 const COMMIT_MESSAGE_START = "CENTAURI_COMMIT_MESSAGE_START";
 const COMMIT_MESSAGE_END = "CENTAURI_COMMIT_MESSAGE_END";
@@ -38,12 +39,15 @@ function wrapCommitMessagePrompt(prompt: string) {
   ].join("\n");
 }
 
-export interface AgentConnection {
-  tool: AgentTool;
-  generateCommitMessage: (prompt: string) => Promise<string>;
+function chooseTool(tools: AgentTool[], current: string) {
+  const availableTools = tools.filter((tool) => tool.available && tool.capabilities.chat);
+  const preferredId = useSettingsStore.getState().settings.defaultAgent;
+  const preferred = preferredId ? availableTools.find((tool) => tool.id === preferredId) : undefined;
+  if (current && availableTools.some((tool) => tool.id === current)) return current;
+  return preferred?.id ?? availableTools[0]?.id ?? "";
 }
 
-export function useAgentSession({
+export function useStreamlineAgentChat({
   repoPath,
   onConnectionChange,
 }: {
@@ -55,10 +59,14 @@ export function useAgentSession({
   const [tools, setTools] = useState<AgentTool[]>([]);
   const [selectedToolId, setSelectedToolId] = useState("");
   const [loadingTools, setLoadingTools] = useState(true);
-  const [connecting, setConnecting] = useState(false);
   const [connectedTool, setConnectedTool] = useState<AgentTool | null>(null);
   const [error, setError] = useState<string | null>(null);
   const connectedToolRef = useRef<AgentTool | null>(null);
+
+  const selectedTool = useMemo(
+    () => tools.find((tool) => tool.id === selectedToolId && tool.available && tool.capabilities.chat) ?? null,
+    [selectedToolId, tools],
+  );
 
   const loadTools = useCallback(async () => {
     setLoadingTools(true);
@@ -66,13 +74,7 @@ export function useAgentSession({
     try {
       const nextTools = await api.getAgentTools();
       setTools(nextTools);
-      const preferredId = useSettingsStore.getState().settings.defaultAgent;
-      const preferred = preferredId ? nextTools.find((tool) => tool.id === preferredId && tool.available) : undefined;
-      const firstAvailable = nextTools.find((tool) => tool.available);
-      setSelectedToolId((current) => {
-        if (current && nextTools.some((tool) => tool.id === current && tool.available)) return current;
-        return preferred?.id ?? firstAvailable?.id ?? "";
-      });
+      setSelectedToolId((current) => chooseTool(nextTools, current));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to detect agent tools");
     } finally {
@@ -116,29 +118,19 @@ export function useAgentSession({
   const disconnect = useCallback(() => {
     connectedToolRef.current = null;
     setConnectedTool(null);
-    setConnecting(false);
     onConnectionChangeRef.current?.(null);
   }, []);
 
-  const startSession = useCallback(async () => {
-    if (!repoPath || !selectedToolId) return;
-    const tool = tools.find((candidate) => candidate.id === selectedToolId);
-    if (!tool) return;
-
-    setConnecting(true);
+  const connect = useCallback(() => {
+    if (!selectedTool) return;
+    connectedToolRef.current = selectedTool;
+    setConnectedTool(selectedTool);
     setError(null);
-
-    try {
-      connectedToolRef.current = tool;
-      setConnectedTool(tool);
-      onConnectionChangeRef.current?.({
-        tool,
-        generateCommitMessage: generateCommitMessageWithAgent,
-      });
-    } finally {
-      setConnecting(false);
-    }
-  }, [generateCommitMessageWithAgent, repoPath, selectedToolId, tools]);
+    onConnectionChangeRef.current?.({
+      tool: selectedTool,
+      generateCommitMessage: generateCommitMessageWithAgent,
+    });
+  }, [generateCommitMessageWithAgent, selectedTool]);
 
   useEffect(() => {
     return () => {
@@ -150,13 +142,13 @@ export function useAgentSession({
   return {
     tools,
     selectedToolId,
+    selectedTool,
     setSelectedToolId,
     loadingTools,
-    connecting,
     connectedTool,
     error,
     loadTools,
-    startSession,
+    connect,
     disconnect,
     sendInput,
   };
