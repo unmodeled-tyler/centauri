@@ -799,6 +799,7 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
                       lines={blameLines}
                       loading={blameLoading}
                       error={blameError}
+                      filePath={selectedFile}
                       selectedLines={selectedLines}
                       onToggleLine={toggleLine}
                       showBlameDetails={!blameDetailsCollapsed}
