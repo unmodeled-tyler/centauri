@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import { existsSync, statSync } from "fs";
 import { Server } from "http";
 import { promisify } from "util";
@@ -10,6 +10,8 @@ import { validateGitRepo } from "../utils/validation.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_AGENT_CONTEXT_CHARS = 12000;
+const MAX_AGENT_CHAT_OUTPUT_CHARS = 120000;
+const AGENT_CHAT_TIMEOUT_MS = 10 * 60 * 1000;
 
 export interface AgentTool {
   id: string;
@@ -61,6 +63,84 @@ function launchArgsForTool(toolId: string, requested: string[]) {
   const allowed = allowedByTool[toolId];
   if (!allowed) return [];
   return requested.filter((arg) => allowed.has(arg));
+}
+
+function chatArgsForTool(toolId: string, requested: string[]) {
+  if (toolId === "codex") {
+    const bypassSandbox = requested.includes("--yolo")
+      ? ["--dangerously-bypass-approvals-and-sandbox"]
+      : [];
+    return ["exec", "--color", "never", ...bypassSandbox, "-"];
+  }
+
+  if (toolId === "claude") {
+    const bypassPermissions = requested.includes("--dangerously-skip-permissions")
+      ? ["--dangerously-skip-permissions"]
+      : [];
+    return ["-p", "--output-format", "text", ...bypassPermissions];
+  }
+
+  return null;
+}
+
+function buildChatPrompt(history: Array<{ role: string; content: string }>, prompt: string) {
+  const turns = history
+    .filter((message) => (message.role === "user" || message.role === "agent") && message.content.trim())
+    .slice(-12)
+    .map((message) => `${message.role === "user" ? "User" : "Assistant"}:\n${message.content.trim()}`);
+
+  return [
+    "You are being used through Centauri's streamlined chat interface.",
+    "Respond naturally to the user's latest message while working in the current repository.",
+    turns.length ? ["Conversation so far:", ...turns].join("\n\n") : "",
+    "Latest user message:",
+    prompt,
+  ].filter(Boolean).join("\n\n");
+}
+
+function runAgentChat(command: string, args: string[], cwd: string, input: string) {
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: { ...process.env, TERM: "dumb", NO_COLOR: "1" },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timeout = setTimeout(() => {
+      settled = true;
+      child.kill();
+      reject(new Error("Agent response timed out."));
+    }, AGENT_CHAT_TIMEOUT_MS);
+
+    const append = (current: string, chunk: Buffer) =>
+      (current + chunk.toString("utf8")).slice(-MAX_AGENT_CHAT_OUTPUT_CHARS);
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout = append(stdout, chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr = append(stderr, chunk);
+    });
+    child.stdin.end(input);
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(err);
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (code === 0) {
+        resolve(stdout.trim());
+        return;
+      }
+      reject(new Error(stderr.trim() || stdout.trim() || `Agent exited with code ${code ?? "unknown"}`));
+    });
+  });
 }
 
 async function commandPath(command: string): Promise<string | undefined> {
@@ -173,6 +253,42 @@ agentRoutes.get("/commit-message-prompt", async (req, res, next) => {
     if (!repo) return res.status(400).json({ error: "repo path required" });
     const resolvedRepo = await validateGitRepo(repo);
     res.json({ prompt: await buildCommitMessagePrompt(resolvedRepo) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+agentRoutes.post("/chat", express.json(), async (req, res, next) => {
+  try {
+    const { repo, tool: toolId, prompt, history, args } = req.body as {
+      repo?: string;
+      tool?: string;
+      prompt?: string;
+      history?: Array<{ role: string; content: string }>;
+      args?: string[];
+    };
+
+    if (!repo) return res.status(400).json({ error: "repo path required" });
+    if (!toolId) return res.status(400).json({ error: "agent tool required" });
+    if (!prompt?.trim()) return res.status(400).json({ error: "message required" });
+
+    const tool = resolveTool(toolId);
+    if (!tool) return res.status(400).json({ error: "Unknown agent tool" });
+
+    const resolvedRepo = await validateGitRepo(repo);
+    const path = await commandPath(tool.command);
+    if (!path) return res.status(400).json({ error: `${tool.label} is not available on PATH` });
+
+    const chatPrompt = buildChatPrompt(Array.isArray(history) ? history : [], prompt.trim());
+    const launchArgs = chatArgsForTool(tool.id, Array.isArray(args) ? args : []);
+    if (!launchArgs) {
+      return res.status(400).json({
+        error: `${tool.label} does not expose a supported non-interactive chat mode yet. Use Agent Terminal for this tool.`,
+      });
+    }
+
+    const response = await runAgentChat(path, launchArgs, resolvedRepo, chatPrompt);
+    res.json({ message: response || "(No response)" });
   } catch (err) {
     next(err);
   }

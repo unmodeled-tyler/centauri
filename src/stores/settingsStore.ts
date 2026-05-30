@@ -20,6 +20,7 @@ export interface AppSettings {
   aiCommitApiKey: string;
   theme: ThemeId;
   defaultAgent: string;
+  streamlineMode: boolean;
 }
 
 const DEFAULTS: AppSettings = {
@@ -40,6 +41,7 @@ const DEFAULTS: AppSettings = {
   aiCommitApiKey: "",
   theme: getStoredTheme(),
   defaultAgent: "",
+  streamlineMode: false,
 };
 
 const SETTINGS_KEY = "quanta-settings";

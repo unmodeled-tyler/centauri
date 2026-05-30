@@ -407,6 +407,24 @@ export function getAgentTools() {
   return api<AgentTool[]>(`${AGENT_BASE}/tools`);
 }
 
+export interface AgentChatMessage {
+  role: "user" | "agent";
+  content: string;
+}
+
+export function sendAgentChatMessage(options: {
+  repo: string;
+  tool: string;
+  prompt: string;
+  history?: AgentChatMessage[];
+  args?: string[];
+}) {
+  return api<{ message: string }>(`${AGENT_BASE}/chat`, {
+    method: "POST",
+    body: JSON.stringify(options),
+  });
+}
+
 export async function createAgentTerminalUrl(
   repo: string,
   tool: string,

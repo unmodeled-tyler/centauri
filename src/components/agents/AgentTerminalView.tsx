@@ -8,11 +8,7 @@ import { useSettingsStore } from "../../stores/settingsStore";
 import { THEMES } from "../../themes/themes";
 import { CentauriMark } from "../brand/CentauriMark";
 import * as api from "../../services/api";
-
-export interface AgentConnection {
-  tool: api.AgentTool;
-  generateCommitMessage: (prompt: string) => Promise<string>;
-}
+import type { AgentConnection } from "../../hooks/useAgentSession";
 
 const COMMIT_MESSAGE_START = "CENTAURI_COMMIT_MESSAGE_START";
 const COMMIT_MESSAGE_END = "CENTAURI_COMMIT_MESSAGE_END";

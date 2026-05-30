@@ -16,6 +16,7 @@ import { RebaseView } from "./components/rebase/RebaseView";
 import { ExplorerView } from "./components/explorer/ExplorerView";
 import { GraphView } from "./components/graph/GraphView";
 import { AgentTerminalView } from "./components/agents/AgentTerminalView";
+import { StreamlineAgentView } from "./components/agents/StreamlineAgentView";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useTheme } from "./themes/useTheme";
 import type { GitFile } from "./types/git";
@@ -307,7 +308,9 @@ export default function App() {
                 className="min-w-0 flex-shrink-0 overflow-hidden border-l border-zinc-800/80 bg-zinc-950 shadow-2xl shadow-black/30"
                 style={{ width: agentPanelWidth }}
               >
-                <ErrorBoundary><AgentTerminalView /></ErrorBoundary>
+                <ErrorBoundary>
+                  {settings.streamlineMode ? <StreamlineAgentView /> : <AgentTerminalView />}
+                </ErrorBoundary>
               </aside>
             </>
           )}

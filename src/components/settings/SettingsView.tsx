@@ -162,6 +162,14 @@ export function SettingsView() {
             <div className="mt-1 text-xs text-zinc-600">
               Agent panel auto-launches this tool when a repo is loaded.
             </div>
+            <div className="mt-3">
+              <Toggle
+                label="Streamline mode"
+                description="Show agent output in a clean chat interface instead of raw terminal"
+                checked={settings.streamlineMode}
+                onChange={(v) => updateSetting("streamlineMode", v)}
+              />
+            </div>
           </div>
         </section>
 
