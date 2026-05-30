@@ -229,21 +229,55 @@ function shorten(value: string, max = 96) {
   return normalized.length > max ? `${normalized.slice(0, max - 1)}...` : normalized;
 }
 
+function displayPathTarget(path: string) {
+  const trimmed = path.trim().replace(/[\\/]+$/, "");
+  if (!trimmed) return path;
+  return trimmed.split(/[\\/]/).pop() || trimmed;
+}
+
+function isDisplayPathKey(key: string) {
+  const normalized = key.replace(/([a-z0-9])([A-Z])/g, "$1_$2").replace(/-/g, "_").toLowerCase();
+  return /(^|_)(path|file|filename|directory|dir)(_|$)/.test(normalized);
+}
+
+function sanitizeToolDetail(value: unknown, key = ""): unknown {
+  if (typeof value === "string") {
+    if (!isDisplayPathKey(key)) return value;
+    return displayPathTarget(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeToolDetail(item, key));
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([entryKey, entryValue]) => [
+      entryKey,
+      sanitizeToolDetail(entryValue, entryKey),
+    ]),
+  );
+}
+
 function summarizeToolCall(name: string, input: unknown) {
   const lower = name.toLowerCase();
   const args = inputObject(input);
   const command = eventString(args.command || args.cmd || args.script);
   const path = eventString(args.path || args.file_path || args.filePath || args.filename || args.file || args.directory_path || args.directoryPath);
+  const displayPath = path ? displayPathTarget(path) : "";
   const pattern = eventString(args.pattern || args.query || args.regex);
 
   if (/bash|shell|exec|command|terminal/.test(lower) && command) return `Run ${shorten(command)}`;
-  if (/read|open|view/.test(lower) && path) return `Read ${path}`;
-  if (/write|create/.test(lower) && path) return `Write ${path}`;
-  if (/edit|patch|update|replace/.test(lower) && path) return `Edit ${path}`;
+  if (/read|open|view/.test(lower) && displayPath) return `Read ${displayPath}`;
+  if (/write|create/.test(lower) && displayPath) return `Write ${displayPath}`;
+  if (/edit|patch|update|replace/.test(lower) && displayPath) return `Edit ${displayPath}`;
   if (/grep|search|find/.test(lower) && pattern) return `Search ${shorten(pattern, 64)}`;
-  if (/list|ls/.test(lower) && path) return `List ${path}`;
+  if (/list|ls/.test(lower) && displayPath) return `List ${displayPath}`;
 
-  const compact = compactJson(input);
+  const compact = compactJson(sanitizeToolDetail(input));
   return compact ? `${name} ${shorten(compact)}` : name || "Tool call";
 }
 
@@ -298,7 +332,7 @@ function extractActivity(event: Record<string, unknown>): AgentChatStreamEvent |
   const callId = eventString(payload?.id || payload?.call_id || payload?.callId || event.id || event.call_id || event.callId);
   const label = summarizeToolCall(name || subtype || itemType || type, input);
   const detailSource = input ?? event.value ?? payload?.value ?? item?.value;
-  const detail = shorten(compactJson(detailSource), 180);
+  const detail = shorten(compactJson(sanitizeToolDetail(detailSource)), 180);
 
   if (/tool|function|command|exec|bash|patch|edit|read|write|grep|find|ls/i.test([type, subtype, itemType, payloadType].join(" "))) {
     return {
