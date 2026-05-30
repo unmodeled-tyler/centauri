@@ -430,10 +430,11 @@ export function sendAgentChatMessage(options: {
   prompt: string;
   history?: AgentChatMessage[];
   args?: string[];
-}) {
+}, request?: { signal?: AbortSignal }) {
   return api<{ message: string }>(`${AGENT_BASE}/chat`, {
     method: "POST",
     body: JSON.stringify(options),
+    signal: request?.signal,
   });
 }
 

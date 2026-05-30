@@ -1,13 +1,15 @@
 import { useState, useRef, useEffect, useCallback, memo } from "react";
-import { Send, Loader2 } from "lucide-react";
+import { Send, Square } from "lucide-react";
 
 const StreamlineInputComponent = memo(function StreamlineInput({
   onSend,
+  onStop,
   disabled,
   busy = false,
   placeholder = "Message your agent...",
 }: {
   onSend: (text: string) => void;
+  onStop?: () => void;
   disabled: boolean;
   busy?: boolean;
   placeholder?: string;
@@ -28,9 +30,17 @@ const StreamlineInputComponent = memo(function StreamlineInput({
 
   const handleSubmit = () => {
     const trimmed = value.trim();
-    if (!trimmed || disabled) return;
+    if (!trimmed || disabled || busy) return;
     onSend(trimmed);
     setValue("");
+  };
+
+  const handleButtonClick = () => {
+    if (busy) {
+      onStop?.();
+      return;
+    }
+    handleSubmit();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -48,17 +58,23 @@ const StreamlineInputComponent = memo(function StreamlineInput({
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
         rows={1}
-        disabled={disabled}
+        disabled={disabled || busy}
         placeholder={placeholder}
         className="min-h-[40px] max-h-[200px] w-full resize-none rounded-lg border border-zinc-700/60 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 outline-none transition focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
       />
       <button
-        onClick={handleSubmit}
-        disabled={disabled || !value.trim()}
-        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-500 text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
+        onClick={handleButtonClick}
+        disabled={busy ? !onStop : disabled || !value.trim()}
+        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-40 ${
+          busy
+            ? "bg-red-500/90 text-white hover:bg-red-400"
+            : "bg-emerald-500 text-zinc-950 hover:bg-emerald-400"
+        }`}
+        aria-label={busy ? "Stop agent" : "Send message"}
+        title={busy ? "Stop agent" : "Send message"}
       >
         {busy ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Square className="h-4 w-4 fill-current" />
         ) : (
           <Send className="h-4 w-4" />
         )}

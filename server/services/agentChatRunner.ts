@@ -17,6 +17,7 @@ export interface AgentChatRequest {
   prompt: string;
   history: AgentChatMessage[];
   requestedArgs: string[];
+  signal?: AbortSignal;
 }
 
 export function buildChatPrompt(history: AgentChatMessage[], prompt: string) {
@@ -34,8 +35,13 @@ export function buildChatPrompt(history: AgentChatMessage[], prompt: string) {
   ].filter(Boolean).join("\n\n");
 }
 
-function runAgentChat(command: string, args: string[], cwd: string, input: string) {
+function runAgentChat(command: string, args: string[], cwd: string, input: string, signal?: AbortSignal) {
   return new Promise<string>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error("Agent response stopped."));
+      return;
+    }
+
     const child = spawn(command, args, {
       cwd,
       env: { ...process.env, TERM: "dumb", NO_COLOR: "1" },
@@ -46,9 +52,23 @@ function runAgentChat(command: string, args: string[], cwd: string, input: strin
     let settled = false;
     const timeout = setTimeout(() => {
       settled = true;
+      cleanup();
       child.kill();
       reject(new Error("Agent response timed out."));
     }, AGENT_CHAT_TIMEOUT_MS);
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+    };
+    const abort = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      child.kill();
+      reject(new Error("Agent response stopped."));
+    };
+    signal?.addEventListener("abort", abort, { once: true });
 
     const append = (current: string, chunk: Buffer) =>
       (current + chunk.toString("utf8")).slice(-MAX_AGENT_CHAT_OUTPUT_CHARS);
@@ -63,13 +83,13 @@ function runAgentChat(command: string, args: string[], cwd: string, input: strin
     child.on("error", (err) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
+      cleanup();
       reject(err);
     });
     child.on("close", (code) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
+      cleanup();
       if (code === 0) {
         resolve(stdout.trim());
         return;
@@ -86,5 +106,5 @@ export async function runHeadlessAgentChat(request: AgentChatRequest) {
   }
 
   const prompt = buildChatPrompt(request.history, request.prompt);
-  return runAgentChat(request.commandPath, args, request.cwd, prompt);
+  return runAgentChat(request.commandPath, args, request.cwd, prompt, request.signal);
 }

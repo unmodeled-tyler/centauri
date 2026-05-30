@@ -87,7 +87,7 @@ export function useStreamlineAgentChat({
   }, [loadTools]);
 
   const sendInput = useCallback(
-    async (prompt: string, options?: { history?: AgentChatMessage[]; args?: string[] }) => {
+    async (prompt: string, options?: { history?: AgentChatMessage[]; args?: string[]; signal?: AbortSignal }) => {
       const tool = connectedToolRef.current;
       if (!repoPath || !tool) {
         throw new Error("No streamlined agent session is connected.");
@@ -99,6 +99,8 @@ export function useStreamlineAgentChat({
         prompt,
         history: options?.history,
         args: options?.args,
+      }, {
+        signal: options?.signal,
       });
       return result.message;
     },

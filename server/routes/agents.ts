@@ -133,6 +133,12 @@ agentRoutes.get("/commit-message-prompt", async (req, res, next) => {
 });
 
 agentRoutes.post("/chat", async (req, res, next) => {
+  const controller = new AbortController();
+  let completed = false;
+  res.on("close", () => {
+    if (!completed) controller.abort();
+  });
+
   try {
     const { repo, tool: toolId, prompt, history, args } = req.body as Record<string, unknown>;
 
@@ -154,9 +160,13 @@ agentRoutes.post("/chat", async (req, res, next) => {
       prompt: prompt.trim(),
       history: parseChatHistory(history),
       requestedArgs: Array.isArray(args) ? args.filter((arg): arg is string => typeof arg === "string") : [],
+      signal: controller.signal,
     });
+    completed = true;
     res.json({ message: response || "(No response)" });
   } catch (err) {
+    if (controller.signal.aborted) return;
+    completed = true;
     next(err);
   }
 });

@@ -19,6 +19,8 @@ export function StreamlineAgentView({
   const refreshRepo = useRepoStore((s) => s.refresh);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const activeRequestRef = useRef<AbortController | null>(null);
+  const stoppedRequestRef = useRef(false);
   const [messages, setMessages] = useState<StreamlineMessage[]>([]);
   const [responding, setResponding] = useState(false);
   const [enabledOptions, setEnabledOptions] = useState<Record<string, boolean>>({});
@@ -96,14 +98,36 @@ export function StreamlineAgentView({
   }, [connect, connectedTool, defaultAgent, loadingTools, repoPath, selectedToolAvailable, selectedToolId]);
 
   const disconnect = useCallback(() => {
+    activeRequestRef.current?.abort();
+    activeRequestRef.current = null;
     sessionDisconnect();
     setMessages([]);
     setResponding(false);
   }, [sessionDisconnect]);
 
+  const stopResponse = useCallback(() => {
+    if (!activeRequestRef.current) return;
+    stoppedRequestRef.current = true;
+    activeRequestRef.current.abort();
+    activeRequestRef.current = null;
+    setResponding(false);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        role: "system",
+        content: "Agent stopped.",
+        timestamp: Date.now(),
+      },
+    ]);
+  }, []);
+
   const handleSend = useCallback(
     async (text: string) => {
       if (!connectedTool || responding) return;
+      const request = new AbortController();
+      activeRequestRef.current = request;
+      stoppedRequestRef.current = false;
       const userMessage: StreamlineMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -116,7 +140,8 @@ export function StreamlineAgentView({
       setMessages((prev) => [...prev, userMessage]);
       setResponding(true);
       try {
-        const response = await sendInput(text, { history, args: selectedLaunchArgs });
+        const response = await sendInput(text, { history, args: selectedLaunchArgs, signal: request.signal });
+        if (request.signal.aborted) return;
         setMessages((prev) => [
           ...prev,
           {
@@ -127,6 +152,7 @@ export function StreamlineAgentView({
           },
         ]);
       } catch (err) {
+        if (request.signal.aborted || stoppedRequestRef.current) return;
         setMessages((prev) => [
           ...prev,
           {
@@ -137,6 +163,9 @@ export function StreamlineAgentView({
           },
         ]);
       } finally {
+        if (activeRequestRef.current === request) {
+          activeRequestRef.current = null;
+        }
         setResponding(false);
       }
     },
@@ -270,7 +299,8 @@ export function StreamlineAgentView({
 
         <StreamlineInputComponent
           onSend={handleSend}
-          disabled={!connectedTool || responding}
+          onStop={stopResponse}
+          disabled={!connectedTool}
           busy={responding}
           placeholder={
             responding
