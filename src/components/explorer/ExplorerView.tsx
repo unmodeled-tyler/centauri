@@ -24,6 +24,8 @@ import {
   AlertCircle,
   PanelLeftClose,
   PanelLeftOpen,
+  ListCollapse,
+  ListTree,
 } from "lucide-react";
 import { BlameView } from "./BlameView";
 import { CommitList } from "./CommitList";
@@ -39,6 +41,7 @@ import { TagsPanel } from "./TagsPanel";
 
 const FILE_HISTORY_HEIGHT_KEY = "centauri-explorer-file-history-height";
 const EXPLORER_LEFT_PANEL_COLLAPSED_KEY = "centauri-explorer-left-panel-collapsed";
+const EXPLORER_BLAME_DETAILS_COLLAPSED_KEY = "centauri-explorer-blame-details-collapsed";
 
 function loadStoredNumber(key: string, fallback: number) {
   try {
@@ -98,6 +101,7 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileHistoryHeight, setFileHistoryHeight] = useState(() => loadStoredNumber(FILE_HISTORY_HEIGHT_KEY, 260));
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(() => loadStoredBoolean(EXPLORER_LEFT_PANEL_COLLAPSED_KEY, false));
+  const [blameDetailsCollapsed, setBlameDetailsCollapsed] = useState(() => loadStoredBoolean(EXPLORER_BLAME_DETAILS_COLLAPSED_KEY, false));
   const [historyDrag, setHistoryDrag] = useState<{ startPointer: number; startSize: number } | null>(null);
 
   // Blame
@@ -255,6 +259,12 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
       localStorage.setItem(EXPLORER_LEFT_PANEL_COLLAPSED_KEY, String(leftPanelCollapsed));
     } catch {}
   }, [leftPanelCollapsed]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(EXPLORER_BLAME_DETAILS_COLLAPSED_KEY, String(blameDetailsCollapsed));
+    } catch {}
+  }, [blameDetailsCollapsed]);
 
   // ── Search ──
 
@@ -748,6 +758,18 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
                   <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800/40 bg-zinc-900/40">
                     <File className="h-3.5 w-3.5 text-zinc-400" />
                     <span className="text-xs text-zinc-300 font-mono truncate">{selectedFile}</span>
+                    <button
+                      onClick={() => setBlameDetailsCollapsed((collapsed) => !collapsed)}
+                      className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+                      title={blameDetailsCollapsed ? "Show blame details" : "Hide blame details"}
+                      aria-label={blameDetailsCollapsed ? "Show blame details" : "Hide blame details"}
+                    >
+                      {blameDetailsCollapsed ? (
+                        <ListTree className="h-3.5 w-3.5" />
+                      ) : (
+                        <ListCollapse className="h-3.5 w-3.5" />
+                      )}
+                    </button>
                   </div>
 
                   {/* Blame (top half) */}
@@ -779,6 +801,7 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
                       error={blameError}
                       selectedLines={selectedLines}
                       onToggleLine={toggleLine}
+                      showBlameDetails={!blameDetailsCollapsed}
                     />
                   </div>
 
