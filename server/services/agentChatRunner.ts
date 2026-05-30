@@ -22,7 +22,7 @@ export interface AgentChatRequest {
 
 export type AgentChatStreamEvent =
   | { type: "text"; delta: string }
-  | { type: "activity"; title: string; detail?: string; status?: "running" | "done" | "error" }
+  | { type: "activity"; title: string; detail?: string; callId?: string; status?: "running" | "done" | "error" }
   | { type: "error"; message: string }
   | { type: "done"; message: string };
 
@@ -173,27 +173,39 @@ function toolInput(event: Record<string, unknown>, item: Record<string, unknown>
     payload?.arguments ??
     payload?.args ??
     payload?.params ??
+    payload?.parameters ??
     event.input ??
     event.arguments ??
     event.args ??
     event.params ??
+    event.parameters ??
     item?.input ??
     item?.arguments ??
-    item?.args
+    item?.args ??
+    item?.parameters
   );
 }
 
 function toolName(event: Record<string, unknown>, item: Record<string, unknown> | null, payload: Record<string, unknown> | null) {
   return eventString(
     payload?.tool_name ||
+    payload?.toolName ||
+    payload?.tool_id ||
+    payload?.toolId ||
     payload?.tool ||
     payload?.name ||
     payload?.function_name ||
     event.tool_name ||
+    event.toolName ||
+    event.tool_id ||
+    event.toolId ||
     event.tool ||
     event.name ||
     event.function_name ||
     item?.tool_name ||
+    item?.toolName ||
+    item?.tool_id ||
+    item?.toolId ||
     item?.tool ||
     item?.name ||
     item?.function_name,
@@ -221,7 +233,7 @@ function summarizeToolCall(name: string, input: unknown) {
   const lower = name.toLowerCase();
   const args = inputObject(input);
   const command = eventString(args.command || args.cmd || args.script);
-  const path = eventString(args.path || args.file_path || args.filePath || args.filename || args.file);
+  const path = eventString(args.path || args.file_path || args.filePath || args.filename || args.file || args.directory_path || args.directoryPath);
   const pattern = eventString(args.pattern || args.query || args.regex);
 
   if (/bash|shell|exec|command|terminal/.test(lower) && command) return `Run ${shorten(command)}`;
@@ -283,14 +295,17 @@ function extractActivity(event: Record<string, unknown>): AgentChatStreamEvent |
   const payloadType = payload ? eventString(payload.type || payload.kind || payload.event) : "";
   const name = toolName(event, item, payload);
   const input = toolInput(event, item, payload);
+  const callId = eventString(payload?.id || payload?.call_id || payload?.callId || event.id || event.call_id || event.callId);
   const label = summarizeToolCall(name || subtype || itemType || type, input);
-  const detail = compactJson(input);
+  const detailSource = input ?? event.value ?? payload?.value ?? item?.value;
+  const detail = shorten(compactJson(detailSource), 180);
 
   if (/tool|function|command|exec|bash|patch|edit|read|write|grep|find|ls/i.test([type, subtype, itemType, payloadType].join(" "))) {
     return {
       type: "activity",
       title: label || "Tool activity",
       detail: detail || undefined,
+      callId: callId || undefined,
       status: /error|failed|fail/i.test(type) ? "error" : /done|completed|complete|end/i.test(type) ? "done" : "running",
     };
   }

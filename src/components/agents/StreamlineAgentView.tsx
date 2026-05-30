@@ -20,7 +20,10 @@ function applyActivityEvent(activities: StreamlineActivity[] = [], event: Extrac
   const nextStatus = event.status ?? "running";
   const matchingIndex = [...activities]
     .reverse()
-    .findIndex((activity) => activity.title === event.title && activity.status === "running");
+    .findIndex((activity) =>
+      activity.status === "running" &&
+      (event.callId ? activity.callId === event.callId : activity.title === event.title),
+    );
   const index = matchingIndex === -1 ? -1 : activities.length - 1 - matchingIndex;
 
   if (index === -1 || nextStatus === "running") {
@@ -28,6 +31,7 @@ function applyActivityEvent(activities: StreamlineActivity[] = [], event: Extrac
       ...activities,
       {
         id: crypto.randomUUID(),
+        callId: event.callId,
         title: event.title,
         detail: event.detail,
         status: nextStatus,

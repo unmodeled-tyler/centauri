@@ -5,6 +5,7 @@ import { MarkdownText } from "./MarkdownText";
 
 export interface StreamlineActivity {
   id: string;
+  callId?: string;
   title: string;
   detail?: string;
   status?: "running" | "done" | "error";

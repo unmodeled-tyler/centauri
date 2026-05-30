@@ -426,7 +426,7 @@ export interface AgentChatMessage {
 
 export type AgentChatStreamEvent =
   | { type: "text"; delta: string }
-  | { type: "activity"; title: string; detail?: string; status?: "running" | "done" | "error" }
+  | { type: "activity"; title: string; detail?: string; callId?: string; status?: "running" | "done" | "error" }
   | { type: "error"; message: string }
   | { type: "done"; message: string };
 
