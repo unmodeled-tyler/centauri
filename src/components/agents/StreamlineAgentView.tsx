@@ -8,7 +8,43 @@ import StreamlineInputComponent from "./StreamlineInput";
 import { loadStoredAgentOption, storeAgentOption } from "../../utils/agentOptions";
 import type { AgentConnection } from "../../types/agents";
 import type { AgentChatMessage, AgentChatStreamEvent } from "../../services/api";
-import type { StreamlineMessage } from "./StreamlineMessage";
+import type { StreamlineActivity, StreamlineMessage } from "./StreamlineMessage";
+
+function finishRunningActivities(activities: StreamlineActivity[] = []) {
+  return activities.map((activity) =>
+    activity.status === "running" ? { ...activity, status: "done" as const } : activity,
+  );
+}
+
+function applyActivityEvent(activities: StreamlineActivity[] = [], event: Extract<AgentChatStreamEvent, { type: "activity" }>) {
+  const nextStatus = event.status ?? "running";
+  const matchingIndex = [...activities]
+    .reverse()
+    .findIndex((activity) => activity.title === event.title && activity.status === "running");
+  const index = matchingIndex === -1 ? -1 : activities.length - 1 - matchingIndex;
+
+  if (index === -1 || nextStatus === "running") {
+    return [
+      ...activities,
+      {
+        id: crypto.randomUUID(),
+        title: event.title,
+        detail: event.detail,
+        status: nextStatus,
+      },
+    ];
+  }
+
+  return activities.map((activity, activityIndex) =>
+    activityIndex === index
+      ? {
+        ...activity,
+        detail: event.detail ?? activity.detail,
+        status: nextStatus,
+      }
+      : activity,
+  );
+}
 
 export function StreamlineAgentView({
   onConnectionChange,
@@ -121,7 +157,7 @@ export function StreamlineAgentView({
           ...message,
           streaming: false,
           activities: [
-            ...(message.activities ?? []),
+            ...finishRunningActivities(message.activities),
             {
               id: crypto.randomUUID(),
               title: "Agent stopped",
@@ -173,22 +209,14 @@ export function StreamlineAgentView({
           if (event.type === "activity") {
             return {
               ...message,
-              activities: [
-                ...(message.activities ?? []),
-                {
-                  id: crypto.randomUUID(),
-                  title: event.title,
-                  detail: event.detail,
-                  status: event.status,
-                },
-              ],
+              activities: applyActivityEvent(message.activities, event),
             };
           }
           if (event.type === "error") {
             return {
               ...message,
               activities: [
-                ...(message.activities ?? []),
+                ...finishRunningActivities(message.activities),
                 {
                   id: crypto.randomUUID(),
                   title: "Agent error",
@@ -199,7 +227,12 @@ export function StreamlineAgentView({
               streaming: false,
             };
           }
-          return { ...message, content: event.message || message.content, streaming: false };
+          return {
+            ...message,
+            content: event.message || message.content,
+            activities: finishRunningActivities(message.activities),
+            streaming: false,
+          };
         }));
       };
 
@@ -215,7 +248,12 @@ export function StreamlineAgentView({
         if (request.signal.aborted) return;
         setMessages((prev) => prev.map((message) =>
           message.id === agentMessageId
-            ? { ...message, content: response || message.content, streaming: false }
+            ? {
+              ...message,
+              content: response || message.content,
+              activities: finishRunningActivities(message.activities),
+              streaming: false,
+            }
             : message,
         ));
       } catch (err) {
@@ -226,7 +264,7 @@ export function StreamlineAgentView({
               ...message,
               streaming: false,
               activities: [
-                ...(message.activities ?? []),
+                ...finishRunningActivities(message.activities),
                 {
                   id: crypto.randomUUID(),
                   title: "Agent error",
