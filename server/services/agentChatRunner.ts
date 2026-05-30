@@ -141,6 +141,58 @@ function compactJson(value: unknown) {
   }
 }
 
+function toolInput(event: Record<string, unknown>, item: Record<string, unknown> | null) {
+  return event.input ?? event.arguments ?? event.args ?? event.params ?? item?.input ?? item?.arguments ?? item?.args;
+}
+
+function toolName(event: Record<string, unknown>, item: Record<string, unknown> | null) {
+  return eventString(
+    event.tool_name ||
+    event.tool ||
+    event.name ||
+    event.function_name ||
+    item?.tool_name ||
+    item?.tool ||
+    item?.name ||
+    item?.function_name,
+  );
+}
+
+function inputObject(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function shorten(value: string, max = 96) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > max ? `${normalized.slice(0, max - 1)}...` : normalized;
+}
+
+function summarizeToolCall(name: string, input: unknown) {
+  const lower = name.toLowerCase();
+  const args = inputObject(input);
+  const command = eventString(args.command || args.cmd || args.script);
+  const path = eventString(args.path || args.file_path || args.filePath || args.filename || args.file);
+  const pattern = eventString(args.pattern || args.query || args.regex);
+
+  if (/bash|shell|exec|command|terminal/.test(lower) && command) return `Run ${shorten(command)}`;
+  if (/read|open|view/.test(lower) && path) return `Read ${path}`;
+  if (/write|create/.test(lower) && path) return `Write ${path}`;
+  if (/edit|patch|update|replace/.test(lower) && path) return `Edit ${path}`;
+  if (/grep|search|find/.test(lower) && pattern) return `Search ${shorten(pattern, 64)}`;
+  if (/list|ls/.test(lower) && path) return `List ${path}`;
+
+  const compact = compactJson(input);
+  return compact ? `${name} ${shorten(compact)}` : name || "Tool call";
+}
+
 function extractTextDelta(event: Record<string, unknown>): string {
   const message = event.message;
   if (message && typeof message === "object") {
@@ -185,8 +237,10 @@ function extractActivity(event: Record<string, unknown>): AgentChatStreamEvent |
   const subtype = eventString(event.subtype || event.name || event.tool || event.tool_name);
   const item = event.item && typeof event.item === "object" ? event.item as Record<string, unknown> : null;
   const itemType = item ? eventString(item.type || item.name || item.tool || item.tool_name) : "";
-  const label = subtype || itemType || type;
-  const detail = compactJson(event.input || event.arguments || event.args || event.params || item?.input || item?.arguments);
+  const name = toolName(event, item);
+  const input = toolInput(event, item);
+  const label = summarizeToolCall(name || subtype || itemType || type, input);
+  const detail = compactJson(input);
 
   if (/tool|function|command|exec|bash|patch|edit|read|write|grep|find|ls/i.test([type, subtype, itemType].join(" "))) {
     return {
