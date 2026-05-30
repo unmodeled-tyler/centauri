@@ -11,7 +11,12 @@ import {
   resolveAgentTool,
   terminalArgsForTool,
 } from "../services/agentTools.js";
-import { runHeadlessAgentChat, type AgentChatMessage } from "../services/agentChatRunner.js";
+import {
+  runHeadlessAgentChat,
+  streamHeadlessAgentChat,
+  type AgentChatMessage,
+  type AgentChatStreamEvent,
+} from "../services/agentChatRunner.js";
 
 const MAX_AGENT_CONTEXT_CHARS = 12000;
 
@@ -167,6 +172,61 @@ agentRoutes.post("/chat", async (req, res, next) => {
   } catch (err) {
     if (controller.signal.aborted) return;
     completed = true;
+    next(err);
+  }
+});
+
+function writeStreamEvent(res: express.Response, event: AgentChatStreamEvent) {
+  res.write(`${JSON.stringify(event)}\n`);
+}
+
+agentRoutes.post("/chat/stream", async (req, res, next) => {
+  const controller = new AbortController();
+  let completed = false;
+  res.on("close", () => {
+    if (!completed) controller.abort();
+  });
+
+  try {
+    const { repo, tool: toolId, prompt, history, args } = req.body as Record<string, unknown>;
+
+    if (typeof repo !== "string" || !repo) return res.status(400).json({ error: "repo path required" });
+    if (typeof toolId !== "string" || !toolId) return res.status(400).json({ error: "agent tool required" });
+    if (typeof prompt !== "string" || !prompt.trim()) return res.status(400).json({ error: "message required" });
+
+    const tool = resolveAgentTool(toolId);
+    if (!tool) return res.status(400).json({ error: "Unknown agent tool" });
+
+    const resolvedRepo = await validateGitRepo(repo);
+    const path = await commandPath(tool.command);
+    if (!path) return res.status(400).json({ error: `${tool.label} is not available on PATH` });
+
+    res.writeHead(200, {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+    });
+
+    await streamHeadlessAgentChat({
+      tool,
+      commandPath: path,
+      cwd: resolvedRepo,
+      prompt: prompt.trim(),
+      history: parseChatHistory(history),
+      requestedArgs: Array.isArray(args) ? args.filter((arg): arg is string => typeof arg === "string") : [],
+      signal: controller.signal,
+    }, (event) => writeStreamEvent(res, event));
+
+    completed = true;
+    res.end();
+  } catch (err) {
+    if (controller.signal.aborted) return;
+    completed = true;
+    if (res.headersSent) {
+      writeStreamEvent(res, { type: "error", message: err instanceof Error ? err.message : "Agent chat failed" });
+      res.end();
+      return;
+    }
     next(err);
   }
 });

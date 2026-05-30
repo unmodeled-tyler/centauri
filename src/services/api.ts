@@ -424,6 +424,12 @@ export interface AgentChatMessage {
   content: string;
 }
 
+export type AgentChatStreamEvent =
+  | { type: "text"; delta: string }
+  | { type: "activity"; title: string; detail?: string; status?: "running" | "done" | "error" }
+  | { type: "error"; message: string }
+  | { type: "done"; message: string };
+
 export function sendAgentChatMessage(options: {
   repo: string;
   tool: string;
@@ -436,6 +442,68 @@ export function sendAgentChatMessage(options: {
     body: JSON.stringify(options),
     signal: request?.signal,
   });
+}
+
+export async function streamAgentChatMessage(
+  options: {
+    repo: string;
+    tool: string;
+    prompt: string;
+    history?: AgentChatMessage[];
+    args?: string[];
+  },
+  request: {
+    signal?: AbortSignal;
+    onEvent: (event: AgentChatStreamEvent) => void;
+  },
+) {
+  const token = await getToken();
+  const csrf = await getCsrfToken();
+  const res = await fetch(`${AGENT_BASE}/chat/stream`, {
+    method: "POST",
+    body: JSON.stringify(options),
+    signal: request.signal,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { "x-quanta-token": token } : {}),
+      ...(csrf ? { "x-csrf-token": csrf } : {}),
+    },
+  }).catch((err: unknown) => {
+    throw new Error(describeNetworkError(err, `${AGENT_BASE}/chat/stream`));
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || "Request failed");
+  }
+
+  if (!res.body) throw new Error("Agent chat stream was empty.");
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalMessage = "";
+
+  const handleLine = (line: string) => {
+    if (!line.trim()) return;
+    const event = JSON.parse(line) as AgentChatStreamEvent;
+    request.onEvent(event);
+    if (event.type === "text") finalMessage += event.delta;
+    if (event.type === "done") finalMessage = event.message;
+    if (event.type === "error") throw new Error(event.message);
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() ?? "";
+    for (const line of lines) handleLine(line);
+    if (done) break;
+  }
+
+  if (buffer.trim()) handleLine(buffer);
+  return { message: finalMessage.trim() };
 }
 
 export async function createAgentTerminalUrl(

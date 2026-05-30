@@ -92,6 +92,26 @@ export function chatArgsForTool(tool: AgentTool, requested: string[]) {
   return null;
 }
 
+export function streamingChatArgsForTool(tool: AgentTool, requested: string[]) {
+  if (!tool.capabilities.chat) return null;
+  const requestedOptions = tool.launchOptions.filter((option) => requested.includes(option.terminalArg));
+  const optionArgs = requestedOptions.flatMap((option) => option.chatArgs);
+
+  if (tool.id === "codex") return ["exec", "--color", "never", "--json", ...optionArgs, "-"];
+  if (tool.id === "claude") {
+    return [
+      "-p",
+      "--output-format",
+      "stream-json",
+      "--include-partial-messages",
+      "--include-hook-events",
+      ...optionArgs,
+    ];
+  }
+  if (tool.id === "droid") return ["exec", "--output-format", "stream-json", ...optionArgs];
+  return chatArgsForTool(tool, requested);
+}
+
 export async function commandPath(command: string): Promise<string | undefined> {
   const lookup = process.platform === "win32" ? "where" : "which";
   try {

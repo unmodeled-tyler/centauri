@@ -7,7 +7,7 @@ import StreamlineMessageComponent from "./StreamlineMessage";
 import StreamlineInputComponent from "./StreamlineInput";
 import { loadStoredAgentOption, storeAgentOption } from "../../utils/agentOptions";
 import type { AgentConnection } from "../../types/agents";
-import type { AgentChatMessage } from "../../services/api";
+import type { AgentChatMessage, AgentChatStreamEvent } from "../../services/api";
 import type { StreamlineMessage } from "./StreamlineMessage";
 
 export function StreamlineAgentView({
@@ -20,6 +20,7 @@ export function StreamlineAgentView({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const activeRequestRef = useRef<AbortController | null>(null);
+  const activeAgentMessageIdRef = useRef<string | null>(null);
   const stoppedRequestRef = useRef(false);
   const [messages, setMessages] = useState<StreamlineMessage[]>([]);
   const [responding, setResponding] = useState(false);
@@ -38,7 +39,7 @@ export function StreamlineAgentView({
     loadTools,
     connect,
     disconnect: sessionDisconnect,
-    sendInput,
+    streamInput,
   } = useStreamlineAgentChat({
     repoPath,
     onConnectionChange: (conn) => {
@@ -100,6 +101,7 @@ export function StreamlineAgentView({
   const disconnect = useCallback(() => {
     activeRequestRef.current?.abort();
     activeRequestRef.current = null;
+    activeAgentMessageIdRef.current = null;
     sessionDisconnect();
     setMessages([]);
     setResponding(false);
@@ -110,9 +112,24 @@ export function StreamlineAgentView({
     stoppedRequestRef.current = true;
     activeRequestRef.current.abort();
     activeRequestRef.current = null;
+    const agentMessageId = activeAgentMessageIdRef.current;
+    activeAgentMessageIdRef.current = null;
     setResponding(false);
     setMessages((prev) => [
-      ...prev,
+      ...prev.map((message) => message.id === agentMessageId
+        ? {
+          ...message,
+          streaming: false,
+          activities: [
+            ...(message.activities ?? []),
+            {
+              id: crypto.randomUUID(),
+              title: "Agent stopped",
+              status: "done" as const,
+            },
+          ],
+        }
+        : message),
       {
         id: crypto.randomUUID(),
         role: "system",
@@ -128,6 +145,8 @@ export function StreamlineAgentView({
       const request = new AbortController();
       activeRequestRef.current = request;
       stoppedRequestRef.current = false;
+      const agentMessageId = crypto.randomUUID();
+      activeAgentMessageIdRef.current = agentMessageId;
       const userMessage: StreamlineMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -137,39 +156,103 @@ export function StreamlineAgentView({
       const history: AgentChatMessage[] = messages
         .filter((message): message is StreamlineMessage & AgentChatMessage => message.role === "user" || message.role === "agent")
         .map((message) => ({ role: message.role, content: message.content }));
-      setMessages((prev) => [...prev, userMessage]);
+      const agentMessage: StreamlineMessage = {
+        id: agentMessageId,
+        role: "agent",
+        content: "",
+        timestamp: Date.now(),
+        activities: [],
+        streaming: true,
+      };
+      const updateAgentMessage = (event: AgentChatStreamEvent) => {
+        setMessages((prev) => prev.map((message) => {
+          if (message.id !== agentMessageId) return message;
+          if (event.type === "text") {
+            return { ...message, content: `${message.content}${event.delta}` };
+          }
+          if (event.type === "activity") {
+            return {
+              ...message,
+              activities: [
+                ...(message.activities ?? []),
+                {
+                  id: crypto.randomUUID(),
+                  title: event.title,
+                  detail: event.detail,
+                  status: event.status,
+                },
+              ],
+            };
+          }
+          if (event.type === "error") {
+            return {
+              ...message,
+              activities: [
+                ...(message.activities ?? []),
+                {
+                  id: crypto.randomUUID(),
+                  title: "Agent error",
+                  detail: event.message,
+                  status: "error" as const,
+                },
+              ],
+              streaming: false,
+            };
+          }
+          return { ...message, content: event.message || message.content, streaming: false };
+        }));
+      };
+
+      setMessages((prev) => [...prev, userMessage, agentMessage]);
       setResponding(true);
       try {
-        const response = await sendInput(text, { history, args: selectedLaunchArgs, signal: request.signal });
+        const response = await streamInput(text, {
+          history,
+          args: selectedLaunchArgs,
+          signal: request.signal,
+          onEvent: updateAgentMessage,
+        });
         if (request.signal.aborted) return;
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "agent",
-            content: response,
-            timestamp: Date.now(),
-          },
-        ]);
+        setMessages((prev) => prev.map((message) =>
+          message.id === agentMessageId
+            ? { ...message, content: response || message.content, streaming: false }
+            : message,
+        ));
       } catch (err) {
         if (request.signal.aborted || stoppedRequestRef.current) return;
-        setMessages((prev) => [
-          ...prev,
-          {
+        setMessages((prev) => prev.map((message) =>
+          message.id === agentMessageId
+            ? {
+              ...message,
+              streaming: false,
+              activities: [
+                ...(message.activities ?? []),
+                {
+                  id: crypto.randomUUID(),
+                  title: "Agent error",
+                  detail: err instanceof Error ? err.message : "Agent chat failed",
+                  status: "error" as const,
+                },
+              ],
+            }
+            : message,
+        ).concat({
             id: crypto.randomUUID(),
             role: "system",
             content: err instanceof Error ? err.message : "Agent chat failed",
             timestamp: Date.now(),
-          },
-        ]);
+          }));
       } finally {
         if (activeRequestRef.current === request) {
           activeRequestRef.current = null;
         }
+        if (activeAgentMessageIdRef.current === agentMessageId) {
+          activeAgentMessageIdRef.current = null;
+        }
         setResponding(false);
       }
     },
-    [connectedTool, messages, responding, selectedLaunchArgs, sendInput],
+    [connectedTool, messages, responding, selectedLaunchArgs, streamInput],
   );
 
   return (
@@ -282,17 +365,6 @@ export function StreamlineAgentView({
             {messages.map((msg) => (
               <StreamlineMessageComponent key={msg.id} message={msg} tool={connectedTool} />
             ))}
-            {responding && (
-              <StreamlineMessageComponent
-                message={{
-                  id: "streamline-pending",
-                  role: "agent",
-                  content: "Working...",
-                  timestamp: Date.now(),
-                }}
-                tool={connectedTool}
-              />
-            )}
             <div ref={messagesEndRef} />
           </div>
         )}

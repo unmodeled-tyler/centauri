@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AgentChatMessage, AgentTool } from "../services/api";
+import type { AgentChatMessage, AgentChatStreamEvent, AgentTool } from "../services/api";
 import * as api from "../services/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { AgentConnection } from "../types/agents";
@@ -107,6 +107,36 @@ export function useStreamlineAgentChat({
     [repoPath],
   );
 
+  const streamInput = useCallback(
+    async (
+      prompt: string,
+      options: {
+        history?: AgentChatMessage[];
+        args?: string[];
+        signal?: AbortSignal;
+        onEvent: (event: AgentChatStreamEvent) => void;
+      },
+    ) => {
+      const tool = connectedToolRef.current;
+      if (!repoPath || !tool) {
+        throw new Error("No streamlined agent session is connected.");
+      }
+
+      const result = await api.streamAgentChatMessage({
+        repo: repoPath,
+        tool: tool.id,
+        prompt,
+        history: options.history,
+        args: options.args,
+      }, {
+        signal: options.signal,
+        onEvent: options.onEvent,
+      });
+      return result.message;
+    },
+    [repoPath],
+  );
+
   const generateCommitMessageWithAgent = useCallback(
     async (prompt: string) => {
       const response = await sendInput(wrapCommitMessagePrompt(prompt));
@@ -153,5 +183,6 @@ export function useStreamlineAgentChat({
     connect,
     disconnect,
     sendInput,
+    streamInput,
   };
 }

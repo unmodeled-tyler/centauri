@@ -1,13 +1,22 @@
 import { memo } from "react";
-import { User } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Terminal, User } from "lucide-react";
 import type { AgentTool } from "../../services/api";
 import { MarkdownText } from "./MarkdownText";
+
+export interface StreamlineActivity {
+  id: string;
+  title: string;
+  detail?: string;
+  status?: "running" | "done" | "error";
+}
 
 export interface StreamlineMessage {
   id: string;
   role: "user" | "agent" | "system";
   content: string;
   timestamp: number;
+  activities?: StreamlineActivity[];
+  streaming?: boolean;
 }
 
 const StreamlineMessageComponent = memo(function StreamlineMessage({
@@ -26,6 +35,7 @@ const StreamlineMessageComponent = memo(function StreamlineMessage({
   }
 
   const isUser = message.role === "user";
+  const activities = message.activities ?? [];
 
   if (!isUser) {
     return (
@@ -37,7 +47,44 @@ const StreamlineMessageComponent = memo(function StreamlineMessage({
           </span>
         </div>
         <div className="max-w-none pr-2">
-          <MarkdownText content={message.content} />
+          {activities.length > 0 && (
+            <div className="mb-3 space-y-1.5">
+              {activities.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="flex min-w-0 items-start gap-2 rounded-md border border-zinc-800/70 bg-zinc-900/35 px-2.5 py-2"
+                >
+                  <div className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center">
+                    {activity.status === "error" ? (
+                      <AlertCircle className="h-3.5 w-3.5 text-red-300" />
+                    ) : activity.status === "done" ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" />
+                    ) : activity.status === "running" ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-400" />
+                    ) : (
+                      <Terminal className="h-3.5 w-3.5 text-zinc-400" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-medium text-zinc-300">{activity.title}</div>
+                    {activity.detail && (
+                      <div className="mt-0.5 line-clamp-2 break-words font-mono text-[11px] leading-4 text-zinc-500">
+                        {activity.detail}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {message.content ? (
+            <MarkdownText content={message.content} />
+          ) : message.streaming ? (
+            <div className="flex items-center gap-2 py-2 text-sm text-zinc-500">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Thinking...
+            </div>
+          ) : null}
         </div>
       </div>
     );
