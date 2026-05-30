@@ -15,7 +15,7 @@ export function loadRecentRepos(): RecentRepo[] {
   }
 }
 
-export function repoDisplayName(path: string): string {
+function repoDisplayName(path: string): string {
   const cleaned = path.replace(/[\\/]+$/, "");
   const base = cleaned.split(/[\\/]/).pop();
   return base || cleaned || path;

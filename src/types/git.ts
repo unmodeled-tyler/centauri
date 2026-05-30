@@ -106,14 +106,6 @@ export interface Remote {
   type: "fetch" | "push";
 }
 
-export interface RepoInfo {
-  path: string;
-  name: string;
-  currentBranch: string;
-  isGitRepo: boolean;
-  remotes: Remote[];
-}
-
 export interface StatusResult {
   branch: string;
   files: GitFile[];

@@ -3,7 +3,6 @@ import type {
   FileDiff,
   CommitInfo,
   Branch,
-  Remote,
   CommitActivity,
   StashEntry,
   DiffHunk,
@@ -194,10 +193,6 @@ export function deleteBranch(repo: string, branch: string, force = false) {
   });
 }
 
-export function getRemotes(repo: string) {
-  return api<Remote[]>(`${GIT_BASE}/remotes?repo=${encodeURIComponent(repo)}`);
-}
-
 export function fetchRemote(repo: string, remote?: string) {
   return api<{ success: boolean }>(`${GIT_BASE}/fetch`, {
     method: "POST",
@@ -216,20 +211,6 @@ export function push(repo: string, remote?: string, branch?: string, force = fal
   return api<{ success: boolean }>(`${GIT_BASE}/push`, {
     method: "POST",
     body: JSON.stringify({ repo, remote, branch, force }),
-  });
-}
-
-export function stash(repo: string, message?: string) {
-  return api<{ success: boolean }>(`${GIT_BASE}/stash`, {
-    method: "POST",
-    body: JSON.stringify({ repo, message }),
-  });
-}
-
-export function stashPop(repo: string) {
-  return api<{ success: boolean }>(`${GIT_BASE}/stash`, {
-    method: "POST",
-    body: JSON.stringify({ repo, pop: true }),
   });
 }
 
@@ -332,13 +313,6 @@ export function rebaseInteractive(request: RebaseRequest) {
   });
 }
 
-export function rebaseAbort(repo: string) {
-  return api<{ success: boolean }>(`${GIT_BASE}/rebase-abort`, {
-    method: "POST",
-    body: JSON.stringify({ repo }),
-  });
-}
-
 // ── Explorer ──
 
 export function getFileTree(repo: string, ref?: string) {
@@ -431,10 +405,6 @@ export interface AgentTool {
 
 export function getAgentTools() {
   return api<AgentTool[]>(`${AGENT_BASE}/tools`);
-}
-
-export function getAgentCommitMessagePrompt(repo: string) {
-  return api<{ prompt: string }>(`${AGENT_BASE}/commit-message-prompt?repo=${encodeURIComponent(repo)}`);
 }
 
 export async function createAgentTerminalUrl(

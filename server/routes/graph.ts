@@ -334,24 +334,4 @@ router.get("/dependencies", async (req, res, next) => {
   }
 });
 
-router.get("/symbols", async (req, res, next) => {
-  try {
-    const repoPath = req.query.repo as string;
-    if (!repoPath) return res.status(400).json({ error: "repo path required" });
-    await validateGitRepo(repoPath);
-
-    const alias = await resolveGitNexusAlias(repoPath);
-    let data: GraphData;
-    if (alias) {
-      data = await buildGitNexusGraph(alias);
-    } else {
-      data = { nodes: [], edges: [], groups: [] };
-    }
-
-    res.json(data);
-  } catch (err) {
-    next(err);
-  }
-});
-
 export default router;

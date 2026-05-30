@@ -24,7 +24,4 @@ export interface GraphData {
   groups: string[];
 }
 
-export interface GraphSearchResult {
-  node: GraphNode;
-  score: number;
-}
+

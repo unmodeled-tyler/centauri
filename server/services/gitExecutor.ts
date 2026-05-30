@@ -164,9 +164,3 @@ export async function isGitRepo(path: string): Promise<boolean> {
   const result = await git(["rev-parse", "--is-inside-work-tree"], { cwd: path });
   return result.exitCode === 0 && result.stdout.trim() === "true";
 }
-
-export async function getRepoRoot(path: string): Promise<string | null> {
-  const result = await git(["rev-parse", "--show-toplevel"], { cwd: path });
-  if (result.exitCode !== 0) return null;
-  return result.stdout.trim();
-}
