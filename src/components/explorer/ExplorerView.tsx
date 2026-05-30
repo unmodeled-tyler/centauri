@@ -27,7 +27,7 @@ import { BlameView } from "./BlameView";
 import { CommitList } from "./CommitList";
 import { CompareView } from "./CompareView";
 import { FileTree } from "./FileTree";
-import { buildFileTree } from "./fileTree";
+import { buildFileTree } from "./buildFileTree";
 import { PickaxeResultsPanel } from "./PickaxeResultsPanel";
 import { SearchResultsPanel } from "./SearchResultsPanel";
 import { TodosPanel } from "./TodosPanel";

@@ -10,14 +10,23 @@ import {
   nativeImage,
   safeStorage,
 } from "electron";
+import net from "net";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-function getUrl() {
+function getUrlArg() {
   const arg = process.argv.find((value) => value.startsWith("--url="));
-  return arg ? arg.slice("--url=".length) : "http://127.0.0.1:5173";
+  return arg ? arg.slice("--url=".length) : null;
+}
+
+async function resolveAppUrl() {
+  const explicitUrl = getUrlArg();
+  if (explicitUrl) return explicitUrl;
+  if (!app.isPackaged) return "http://127.0.0.1:5173";
+  return startPackagedServer();
 }
 
 function repoDisplayName(path) {
@@ -29,6 +38,7 @@ function repoDisplayName(path) {
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
+let packagedServer = null;
 
 /** @type {Array<{name: string, path: string}>} */
 let recentRepos = [];
@@ -46,7 +56,7 @@ if (!app.requestSingleInstanceLock()) {
       if (!mainWindow.isVisible()) mainWindow.show();
       mainWindow.focus();
     } else {
-      createWindow();
+      void createWindow();
     }
   });
   registerLifecycle();
@@ -55,6 +65,10 @@ if (!app.requestSingleInstanceLock()) {
 function registerLifecycle() {
   app.on("before-quit", () => {
     isQuitting = true;
+    if (packagedServer) {
+      packagedServer.close();
+      packagedServer = null;
+    }
   });
 
   app.on("will-quit", () => {
@@ -63,7 +77,7 @@ function registerLifecycle() {
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      void createWindow();
     } else if (mainWindow) {
       mainWindow.show();
     }
@@ -98,8 +112,6 @@ function registerLifecycle() {
   ipcMain.handle("store-api-key", (_event, plaintext) => {
     if (!safeStorage.isEncryptionAvailable()) return;
     app.setLoginItemSettings({ openAtLogin: false });
-    const { writeFileSync } = require("fs");
-    const { join } = require("path");
     const keyPath = join(app.getPath("userData"), "quanta-ai-key");
     try {
       const encrypted = safeStorage.encryptString(plaintext);
@@ -111,8 +123,6 @@ function registerLifecycle() {
 
   ipcMain.handle("load-api-key", () => {
     if (!safeStorage.isEncryptionAvailable()) return "";
-    const { readFileSync, existsSync } = require("fs");
-    const { join } = require("path");
     const keyPath = join(app.getPath("userData"), "quanta-ai-key");
     if (!existsSync(keyPath)) return "";
     try {
@@ -124,8 +134,6 @@ function registerLifecycle() {
   });
 
   ipcMain.handle("clear-api-key", () => {
-    const { unlinkSync, existsSync } = require("fs");
-    const { join } = require("path");
     const keyPath = join(app.getPath("userData"), "quanta-ai-key");
     if (existsSync(keyPath)) {
       try { unlinkSync(keyPath); } catch { /* ignored */ }
@@ -133,7 +141,7 @@ function registerLifecycle() {
   });
 
   app.whenReady().then(() => {
-    createWindow();
+    void createWindow();
     createTray();
 
     const registered = globalShortcut.register(TOGGLE_SHORTCUT, toggleMainWindow);
@@ -154,11 +162,65 @@ function toggleMainWindow() {
       mainWindow.focus();
     }
   } else {
-    createWindow();
+    void createWindow();
   }
 }
 
-function createWindow() {
+function isPortAvailable(port) {
+  return new Promise((resolveAvailability) => {
+    const server = net.createServer();
+
+    server.once("error", () => {
+      resolveAvailability(false);
+    });
+
+    server.once("listening", () => {
+      server.close(() => resolveAvailability(true));
+    });
+
+    server.listen(port, "127.0.0.1");
+  });
+}
+
+async function findFreePort(startPort) {
+  for (let port = startPort; port < startPort + 100; port += 1) {
+    if (await isPortAvailable(port)) {
+      return port;
+    }
+  }
+  throw new Error(`Could not find an open port starting at ${startPort}`);
+}
+
+async function startPackagedServer() {
+  if (packagedServer) {
+    const address = packagedServer.address();
+    const port = address && typeof address === "object" ? address.port : 4123;
+    return `http://127.0.0.1:${port}`;
+  }
+
+  const serverEntryCandidates = [
+    join(app.getAppPath(), "build", "server", "server", "index.js"),
+    join(app.getAppPath(), "build", "server", "index.js"),
+  ];
+  const serverEntry = serverEntryCandidates.find((candidate) => existsSync(candidate));
+  if (!serverEntry) {
+    throw new Error("Could not find the packaged Centauri server entry.");
+  }
+
+  const port = await findFreePort(4123);
+  process.env.NODE_ENV = "production";
+  process.env.CENTAURI_CLI = "1";
+  process.env.PORT = String(port);
+  process.env.HOST = "127.0.0.1";
+
+  const { startServer } = await import(serverEntry);
+  const started = await startServer({ port, host: "127.0.0.1" });
+  packagedServer = started.server;
+
+  return `http://127.0.0.1:${port}`;
+}
+
+async function createWindow() {
   if (mainWindow) {
     mainWindow.focus();
     return;
@@ -204,7 +266,11 @@ function createWindow() {
     mainWindow.hide();
   });
 
-  void mainWindow.loadURL(getUrl());
+  try {
+    await mainWindow.loadURL(await resolveAppUrl());
+  } catch (err) {
+    console.error("[centauri] Failed to load app window:", err);
+  }
 }
 
 const TRAY_ICON_PNG =
@@ -268,7 +334,7 @@ function buildContextMenu() {
           mainWindow.show();
           mainWindow.focus();
         } else {
-          createWindow();
+          void createWindow();
         }
       },
     },
@@ -304,11 +370,11 @@ function createTray() {
   });
 
   tray.on("double-click", () => {
-    if (mainWindow) {
-      mainWindow.show();
-      mainWindow.focus();
-    } else {
-      createWindow();
-    }
-  });
+	  if (mainWindow) {
+	    mainWindow.show();
+	    mainWindow.focus();
+	  } else {
+	    void createWindow();
+	  }
+	});
 }

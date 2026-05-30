@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "description": "Local-first agent development environment with Git source control.",
   "license": "MIT",
+  "author": "unmodeled-tyler",
   "type": "module",
+  "main": "electron/main.js",
   "bin": {
     "centauri": "./bin/centauri.js"
   },
@@ -11,6 +13,7 @@
     "bin",
     "build",
     "dist",
+    "electron",
     "scripts/install.sh",
     "README.md",
     "LICENSE"
@@ -28,12 +31,49 @@
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
+    "build:desktop": "npm run build && electron-builder",
+    "build:mac": "npm run build:mac:dir && ./scripts/package-mac-artifacts.sh",
+    "build:mac:dir": "npm run build && electron-builder --mac --universal --dir",
     "start": "node ./build/server/server/index.js",
     "start:cli": "node ./bin/centauri.js",
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
     "prepare": "husky"
+  },
+  "build": {
+    "appId": "com.unmodeledtyler.centauri",
+    "productName": "Centauri",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "package.json",
+      "electron/**",
+      "dist/**",
+      "build/**",
+      "node_modules/**",
+      "README.md",
+      "LICENSE"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/node-pty/**"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "identity": null,
+      "x64ArchFiles": "Contents/Resources/app.asar.unpacked/node_modules/node-pty/prebuilds/**/*",
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "universal"
+          ]
+        }
+      ]
+    }
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
@@ -71,6 +111,7 @@
     "@vitejs/plugin-react": "^4.4.0",
     "concurrently": "^9.1.0",
     "electron": "^41.2.1",
+    "electron-builder": "^26.8.1",
     "eslint": "^9.24.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.26",

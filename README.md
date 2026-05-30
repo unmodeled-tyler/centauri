@@ -124,6 +124,22 @@ Or use the CLI launcher after building:
 npm run start:cli
 ```
 
+## macOS universal build
+
+Centauri can also be packaged as an unsigned universal macOS Electron app for both Apple Silicon and Intel Macs:
+
+```bash
+npm run build:mac
+```
+
+This writes a universal `.dmg` and `.zip` to `release/`. For a faster local packaging smoke test without creating installer artifacts:
+
+```bash
+npm run build:mac:dir
+```
+
+The packaged app starts its own local Centauri API server and serves the built UI from the app bundle. Because local builds are unsigned, macOS Gatekeeper may require opening the app from Finder with **Open** the first time.
+
 ## Scripts
 
 ```bash
@@ -133,6 +149,8 @@ npm run dev:server   # start API server in watch mode
 npm run dev:client   # start Vite frontend
 npm run dev:cli      # alias for the desktop dev launcher
 npm run build        # build frontend and backend
+npm run build:mac    # build unsigned universal macOS dmg + zip
+npm run build:mac:dir # build unpacked universal macOS app directory
 npm start            # run built server
 npm run start:cli    # run built app through CLI launcher
 npm run typecheck    # TypeScript checks for client and server
@@ -164,6 +182,10 @@ sudo apt install ./centauri_<version>_amd64.deb
 ```
 
 Newer `.deb` releases install directly over older Centauri `.deb` installs because the package name stays `centauri` and the version increases. The package also declares `Conflicts/Replaces: quanta-control` for compatibility with any older Debian package under the previous app name.
+
+## Release workflows
+
+GitHub Actions includes separate manual release builders for Linux `.deb` packages and universal macOS `.dmg`/`.zip` artifacts. Both default to draft prereleases and can use either the `package.json` version or a version/tag provided from the workflow dispatch form.
 
 ## AI commit messages
 
