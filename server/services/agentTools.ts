@@ -58,13 +58,14 @@ const AGENT_TOOLS: AgentTool[] = [
       },
     ],
   },
-  { id: "pi", label: "pi", command: "pi", description: "pi coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [] },
+  { id: "pi", label: "pi", command: "pi", description: "pi coding agent", capabilities: { terminal: true, chat: true }, launchOptions: [] },
   { id: "opencode", label: "OpenCode", command: "opencode", description: "OpenCode terminal coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [] },
   { id: "aider", label: "Aider", command: "aider", description: "Aider pair-programming CLI", capabilities: { terminal: true, chat: false }, launchOptions: [] },
   { id: "gemini", label: "Gemini CLI", command: "gemini", description: "Google Gemini CLI", capabilities: { terminal: true, chat: false }, launchOptions: [] },
   { id: "cursor-agent", label: "Cursor Agent", command: "cursor-agent", description: "Cursor's command-line coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [] },
   { id: "amp", label: "Amp", command: "amp", description: "Sourcegraph Amp coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [] },
-  { id: "droid", label: "Droid", command: "droid", description: "Factory Droid coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [] },
+  { id: "droid", label: "Droid", command: "droid", description: "Factory Droid coding agent", capabilities: { terminal: true, chat: true }, launchOptions: [] },
+  { id: "vibe", label: "Mistral Vibe", command: "vibe", description: "Mistral Vibe coding agent", capabilities: { terminal: true, chat: true }, launchOptions: [] },
   { id: "hermes", label: "Hermes", command: "hermes", description: "Hermes coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [] },
   { id: "openclaw", label: "OpenClaw", command: "openclaw", description: "OpenClaw coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [] },
 ];
@@ -85,6 +86,9 @@ export function chatArgsForTool(tool: AgentTool, requested: string[]) {
 
   if (tool.id === "codex") return ["exec", "--color", "never", ...optionArgs, "-"];
   if (tool.id === "claude") return ["-p", "--output-format", "text", ...optionArgs];
+  if (tool.id === "droid") return ["exec", "--output-format", "text", ...optionArgs];
+  if (tool.id === "pi") return ["--print", "--mode", "text", ...optionArgs];
+  if (tool.id === "vibe") return ["--prompt", "--output", "text", "--trust", ...optionArgs];
   return null;
 }
 

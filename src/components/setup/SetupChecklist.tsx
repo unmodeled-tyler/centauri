@@ -226,7 +226,7 @@ export function SetupChecklist({
           note={
             readyAgentTools.length > 0
               ? readyAgentTools.map((tool) => `${tool.command}${tool.path ? ` → ${tool.path}` : ""}`).join(" · ")
-              : "Supported tools include claude, codex, pi, opencode, aider, gemini, cursor-agent, and amp."
+              : "Supported tools include claude, codex, droid, pi, vibe, opencode, aider, gemini, cursor-agent, and amp."
           }
         />
 
