@@ -22,6 +22,8 @@ import {
   Loader2,
   TagIcon,
   AlertCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { BlameView } from "./BlameView";
 import { CommitList } from "./CommitList";
@@ -36,6 +38,7 @@ import { TagsPanel } from "./TagsPanel";
 // ── Main ExplorerView ──
 
 const FILE_HISTORY_HEIGHT_KEY = "centauri-explorer-file-history-height";
+const EXPLORER_LEFT_PANEL_COLLAPSED_KEY = "centauri-explorer-left-panel-collapsed";
 
 function loadStoredNumber(key: string, fallback: number) {
   try {
@@ -43,6 +46,16 @@ function loadStoredNumber(key: string, fallback: number) {
     if (!raw) return fallback;
     const parsed = Number.parseInt(raw, 10);
     return Number.isFinite(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function loadStoredBoolean(key: string, fallback: boolean) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw == null) return fallback;
+    return raw === "true";
   } catch {
     return fallback;
   }
@@ -84,6 +97,7 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
   // Selected file
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileHistoryHeight, setFileHistoryHeight] = useState(() => loadStoredNumber(FILE_HISTORY_HEIGHT_KEY, 260));
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(() => loadStoredBoolean(EXPLORER_LEFT_PANEL_COLLAPSED_KEY, false));
   const [historyDrag, setHistoryDrag] = useState<{ startPointer: number; startSize: number } | null>(null);
 
   // Blame
@@ -235,6 +249,12 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
       localStorage.setItem(FILE_HISTORY_HEIGHT_KEY, String(fileHistoryHeight));
     } catch {}
   }, [fileHistoryHeight]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(EXPLORER_LEFT_PANEL_COLLAPSED_KEY, String(leftPanelCollapsed));
+    } catch {}
+  }, [leftPanelCollapsed]);
 
   // ── Search ──
 
@@ -525,6 +545,18 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
               {label}
             </button>
           ))}
+          <button
+            onClick={() => setLeftPanelCollapsed((collapsed) => !collapsed)}
+            className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+            title={leftPanelCollapsed ? "Show explorer panel" : "Hide explorer panel"}
+            aria-label={leftPanelCollapsed ? "Show explorer panel" : "Hide explorer panel"}
+          >
+            {leftPanelCollapsed ? (
+              <PanelLeftOpen className="h-3.5 w-3.5" />
+            ) : (
+              <PanelLeftClose className="h-3.5 w-3.5" />
+            )}
+          </button>
         </div>
       </div>
 
@@ -627,75 +659,77 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
       {/* ── Main content ── */}
       <div className="flex-1 flex min-h-0">
         {/* Left panel: file tree or search results */}
-        <div className="w-64 flex-shrink-0 border-r border-zinc-800/40 overflow-auto bg-zinc-950/60">
-          {mode === "browse" && (
-            treeLoading ? (
-              <div className="flex items-center justify-center h-full text-zinc-500">
-                <Loader2 className="h-5 w-5 animate-spin" />
-              </div>
-            ) : (
-              <FileTree
-                nodes={tree}
-                selectedFile={selectedFile}
-                onSelectFile={setSelectedFile}
-                expandedDirs={expandedDirs}
-                onToggleDir={toggleDir}
+        {!leftPanelCollapsed && (
+          <div className="w-64 flex-shrink-0 border-r border-zinc-800/40 overflow-auto bg-zinc-950/60">
+            {mode === "browse" && (
+              treeLoading ? (
+                <div className="flex items-center justify-center h-full text-zinc-500">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                </div>
+              ) : (
+                <FileTree
+                  nodes={tree}
+                  selectedFile={selectedFile}
+                  onSelectFile={setSelectedFile}
+                  expandedDirs={expandedDirs}
+                  onToggleDir={toggleDir}
+                />
+              )
+            )}
+
+            {mode === "search" && (
+              <SearchResultsPanel
+                loading={searchLoading}
+                error={searchError}
+                results={searchResults}
+                truncated={searchTruncated}
+                onOpenFile={openFileInExplorer}
               />
-            )
-          )}
+            )}
 
-          {mode === "search" && (
-            <SearchResultsPanel
-              loading={searchLoading}
-              error={searchError}
-              results={searchResults}
-              truncated={searchTruncated}
-              onOpenFile={openFileInExplorer}
-            />
-          )}
+            {mode === "pickaxe" && (
+              <PickaxeResultsPanel
+                loading={pickaxeLoading}
+                error={pickaxeError}
+                commits={pickaxeResults}
+              />
+            )}
 
-          {mode === "pickaxe" && (
-            <PickaxeResultsPanel
-              loading={pickaxeLoading}
-              error={pickaxeError}
-              commits={pickaxeResults}
-            />
-          )}
+            {mode === "compare" && (
+              <div className="p-4 text-xs text-zinc-500 text-center">
+                Enter two refs above to compare
+              </div>
+            )}
 
-          {mode === "compare" && (
-            <div className="p-4 text-xs text-zinc-500 text-center">
-              Enter two refs above to compare
-            </div>
-          )}
+            {mode === "todos" && (
+              <TodosPanel
+                loading={todoLoading}
+                error={todoError}
+                items={todoItems}
+                truncated={todoTruncated}
+                onOpenFile={openFileInExplorer}
+              />
+            )}
 
-          {mode === "todos" && (
-            <TodosPanel
-              loading={todoLoading}
-              error={todoError}
-              items={todoItems}
-              truncated={todoTruncated}
-              onOpenFile={openFileInExplorer}
-            />
-          )}
-
-          {mode === "tags" && (
-            <TagsPanel
-              loading={tagLoading}
-              error={tagError}
-              tags={tags}
-              newTagName={newTagName}
-              newTagMessage={newTagMessage}
-              newTagRef={newTagRef}
-              creating={tagCreating}
-              deletingTagName={deletingTagName}
-              onNewTagNameChange={setNewTagName}
-              onNewTagMessageChange={setNewTagMessage}
-              onNewTagRefChange={setNewTagRef}
-              onCreateTag={createTagAction}
-              onDeleteTag={(name: string) => setConfirmDeleteTag(name)}
-            />
-          )}
-        </div>
+            {mode === "tags" && (
+              <TagsPanel
+                loading={tagLoading}
+                error={tagError}
+                tags={tags}
+                newTagName={newTagName}
+                newTagMessage={newTagMessage}
+                newTagRef={newTagRef}
+                creating={tagCreating}
+                deletingTagName={deletingTagName}
+                onNewTagNameChange={setNewTagName}
+                onNewTagMessageChange={setNewTagMessage}
+                onNewTagRefChange={setNewTagRef}
+                onCreateTag={createTagAction}
+                onDeleteTag={(name: string) => setConfirmDeleteTag(name)}
+              />
+            )}
+          </div>
+        )}
 
         {/* Right panel: content */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
