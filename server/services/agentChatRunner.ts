@@ -141,12 +141,54 @@ function compactJson(value: unknown) {
   }
 }
 
-function toolInput(event: Record<string, unknown>, item: Record<string, unknown> | null) {
-  return event.input ?? event.arguments ?? event.args ?? event.params ?? item?.input ?? item?.arguments ?? item?.args;
+function nestedRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
-function toolName(event: Record<string, unknown>, item: Record<string, unknown> | null) {
+function findToolPayload(event: Record<string, unknown>): Record<string, unknown> | null {
+  const type = eventString(event.type || event.kind || event.event);
+  if (/tool|function|command|exec|bash|patch|edit|read|write|grep|find|ls/i.test(type)) return event;
+
+  for (const key of ["item", "message", "tool_call", "function_call", "call"]) {
+    const nested = nestedRecord(event[key]);
+    if (!nested) continue;
+    const found = findToolPayload(nested);
+    if (found) return found;
+  }
+
+  const content = event.content;
+  if (Array.isArray(content)) {
+    for (const part of content) {
+      const found = nestedRecord(part) ? findToolPayload(part as Record<string, unknown>) : null;
+      if (found) return found;
+    }
+  }
+
+  return null;
+}
+
+function toolInput(event: Record<string, unknown>, item: Record<string, unknown> | null, payload: Record<string, unknown> | null) {
+  return (
+    payload?.input ??
+    payload?.arguments ??
+    payload?.args ??
+    payload?.params ??
+    event.input ??
+    event.arguments ??
+    event.args ??
+    event.params ??
+    item?.input ??
+    item?.arguments ??
+    item?.args
+  );
+}
+
+function toolName(event: Record<string, unknown>, item: Record<string, unknown> | null, payload: Record<string, unknown> | null) {
   return eventString(
+    payload?.tool_name ||
+    payload?.tool ||
+    payload?.name ||
+    payload?.function_name ||
     event.tool_name ||
     event.tool ||
     event.name ||
@@ -237,12 +279,14 @@ function extractActivity(event: Record<string, unknown>): AgentChatStreamEvent |
   const subtype = eventString(event.subtype || event.name || event.tool || event.tool_name);
   const item = event.item && typeof event.item === "object" ? event.item as Record<string, unknown> : null;
   const itemType = item ? eventString(item.type || item.name || item.tool || item.tool_name) : "";
-  const name = toolName(event, item);
-  const input = toolInput(event, item);
+  const payload = findToolPayload(event);
+  const payloadType = payload ? eventString(payload.type || payload.kind || payload.event) : "";
+  const name = toolName(event, item, payload);
+  const input = toolInput(event, item, payload);
   const label = summarizeToolCall(name || subtype || itemType || type, input);
   const detail = compactJson(input);
 
-  if (/tool|function|command|exec|bash|patch|edit|read|write|grep|find|ls/i.test([type, subtype, itemType].join(" "))) {
+  if (/tool|function|command|exec|bash|patch|edit|read|write|grep|find|ls/i.test([type, subtype, itemType, payloadType].join(" "))) {
     return {
       type: "activity",
       title: label || "Tool activity",
