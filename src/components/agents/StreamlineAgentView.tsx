@@ -10,6 +10,11 @@ import type { AgentConnection } from "../../types/agents";
 import type { AgentChatMessage, AgentChatStreamEvent } from "../../services/api";
 import type { StreamlineActivity, StreamlineMessage } from "./StreamlineMessage";
 
+interface QueuedPrompt {
+  messageId: string;
+  text: string;
+}
+
 function finishRunningActivities(activities: StreamlineActivity[] = []) {
   return activities.map((activity) =>
     activity.status === "running" ? { ...activity, status: "done" as const } : activity,
@@ -61,9 +66,13 @@ export function StreamlineAgentView({
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const activeRequestRef = useRef<AbortController | null>(null);
   const activeAgentMessageIdRef = useRef<string | null>(null);
+  const messagesRef = useRef<StreamlineMessage[]>([]);
+  const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
+  const runPromptRef = useRef<((prompt: QueuedPrompt) => void) | null>(null);
   const stoppedRequestRef = useRef(false);
   const [messages, setMessages] = useState<StreamlineMessage[]>([]);
   const [responding, setResponding] = useState(false);
+  const [queuedCount, setQueuedCount] = useState(0);
   const [enabledOptions, setEnabledOptions] = useState<Record<string, boolean>>({});
   const defaultAgent = useSettingsStore((s) => s.settings.defaultAgent);
   const autoLaunchedRef = useRef(false);
@@ -118,6 +127,10 @@ export function StreamlineAgentView({
     }
   }, [connectedTool, repoPath]);
 
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -142,10 +155,20 @@ export function StreamlineAgentView({
     activeRequestRef.current?.abort();
     activeRequestRef.current = null;
     activeAgentMessageIdRef.current = null;
+    queuedPromptsRef.current = [];
+    setQueuedCount(0);
     sessionDisconnect();
     setMessages([]);
     setResponding(false);
   }, [sessionDisconnect]);
+
+  const startNextQueuedPrompt = useCallback(() => {
+    const nextPrompt = queuedPromptsRef.current.shift();
+    setQueuedCount(queuedPromptsRef.current.length);
+    if (nextPrompt) {
+      window.setTimeout(() => runPromptRef.current?.(nextPrompt), 0);
+    }
+  }, []);
 
   const stopResponse = useCallback(() => {
     if (!activeRequestRef.current) return;
@@ -177,11 +200,12 @@ export function StreamlineAgentView({
         timestamp: Date.now(),
       },
     ]);
-  }, []);
+    startNextQueuedPrompt();
+  }, [startNextQueuedPrompt]);
 
-  const handleSend = useCallback(
-    async (text: string) => {
-      if (!connectedTool || responding) return;
+  const runPrompt = useCallback(
+    async ({ messageId, text }: QueuedPrompt) => {
+      if (!connectedTool) return;
       const request = new AbortController();
       activeRequestRef.current = request;
       stoppedRequestRef.current = false;
@@ -193,8 +217,13 @@ export function StreamlineAgentView({
         content: text,
         timestamp: Date.now(),
       };
-      const history: AgentChatMessage[] = messages
-        .filter((message): message is StreamlineMessage & AgentChatMessage => message.role === "user" || message.role === "agent")
+      const history: AgentChatMessage[] = messagesRef.current
+        .filter((message): message is StreamlineMessage & AgentChatMessage =>
+          (message.role === "user" || message.role === "agent") &&
+          !message.queued &&
+          !message.streaming &&
+          message.id !== messageId,
+        )
         .map((message) => ({ role: message.role, content: message.content }));
       const agentMessage: StreamlineMessage = {
         id: agentMessageId,
@@ -240,7 +269,24 @@ export function StreamlineAgentView({
         }));
       };
 
-      setMessages((prev) => [...prev, userMessage, agentMessage]);
+      setMessages((prev) => {
+        const existingUserIndex = prev.findIndex((message) => message.id === messageId);
+        if (existingUserIndex === -1) {
+          return [...prev, { ...userMessage, id: messageId }, agentMessage];
+        }
+        return [
+          ...prev.map((message) =>
+            message.id === messageId
+              ? {
+                ...message,
+                queued: false,
+                timestamp: Date.now(),
+              }
+              : message,
+          ),
+          agentMessage,
+        ];
+      });
       setResponding(true);
       try {
         const response = await streamInput(text, {
@@ -285,16 +331,50 @@ export function StreamlineAgentView({
             timestamp: Date.now(),
           }));
       } finally {
-        if (activeRequestRef.current === request) {
+        const ownsActiveRequest = activeRequestRef.current === request;
+        if (ownsActiveRequest) {
           activeRequestRef.current = null;
-        }
-        if (activeAgentMessageIdRef.current === agentMessageId) {
           activeAgentMessageIdRef.current = null;
+          setResponding(false);
+          if (!stoppedRequestRef.current) {
+            startNextQueuedPrompt();
+          }
         }
-        setResponding(false);
       }
     },
-    [connectedTool, messages, responding, selectedLaunchArgs, streamInput],
+    [connectedTool, selectedLaunchArgs, startNextQueuedPrompt, streamInput],
+  );
+
+  useEffect(() => {
+    runPromptRef.current = (prompt) => {
+      void runPrompt(prompt);
+    };
+  }, [runPrompt]);
+
+  const handleSend = useCallback(
+    (text: string) => {
+      if (!connectedTool) return;
+      const messageId = crypto.randomUUID();
+
+      if (activeRequestRef.current) {
+        queuedPromptsRef.current.push({ messageId, text });
+        setQueuedCount(queuedPromptsRef.current.length);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: messageId,
+            role: "user",
+            content: text,
+            timestamp: Date.now(),
+            queued: true,
+          },
+        ]);
+        return;
+      }
+
+      void runPrompt({ messageId, text });
+    },
+    [connectedTool, runPrompt],
   );
 
   return (
@@ -416,9 +496,10 @@ export function StreamlineAgentView({
           onStop={stopResponse}
           disabled={!connectedTool}
           busy={responding}
+          queuedCount={queuedCount}
           placeholder={
             responding
-              ? "Waiting for the agent..."
+              ? "Queue a follow-up... (Shift+Enter for new line)"
               : !connectedTool
               ? "Launch an agent to start chatting"
               : "Message your agent... (Shift+Enter for new line)"

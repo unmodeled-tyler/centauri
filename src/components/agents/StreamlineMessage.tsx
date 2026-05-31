@@ -18,6 +18,7 @@ export interface StreamlineMessage {
   timestamp: number;
   activities?: StreamlineActivity[];
   streaming?: boolean;
+  queued?: boolean;
 }
 
 const StreamlineMessageComponent = memo(function StreamlineMessage({
@@ -96,6 +97,11 @@ const StreamlineMessageComponent = memo(function StreamlineMessage({
       <div className="order-first min-w-0 max-w-[85%]">
         <div className="mb-0.5 flex items-center gap-2">
           <span className="text-[11px] font-semibold text-zinc-400">You</span>
+          {message.queued && (
+            <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-200">
+              Queued
+            </span>
+          )}
           <span className="text-[10px] text-zinc-600">
             {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
