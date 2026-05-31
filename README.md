@@ -8,18 +8,32 @@
 
 It gives you a clean side-by-side flow:
 
-- run your preferred CLI coding agent in an embedded terminal
+- run your preferred CLI coding agent in either a streamlined chat interface or an embedded terminal
 - watch repository changes appear in the Changes panel
 - generate a best-practice commit message
 - commit and push without leaving the app
 
-Centauri is designed to complement tools like Claude Code, Codex, pi, OpenCode, Aider, Gemini CLI, and other terminal-first agents. It does not replace Git, your terminal, or your existing credentials — it wraps the local tools you already use in a tighter building loop.
+Centauri is designed to complement tools like Claude Code, Codex, Droid, pi, Mistral Vibe, OpenCode, Aider, Gemini CLI, and other terminal-first agents. It does not replace Git, your terminal, or your existing credentials — it wraps the local tools you already use in a tighter building loop.
 
 ## Current status
 
 Centauri is early and moving fast. The core local ADE loop is in place, but expect sharp edges while the product direction settles.
 
 ## Features
+
+### Streamline agent chat
+
+Streamline mode gives CLI coding agents a regular chat-style interface while still running the underlying harness on your machine in the opened repository.
+
+- use chat-capable CLI harnesses through the same clean conversation UI
+- switch between supported tools such as Claude Code, Codex, Droid, pi, and Mistral Vibe
+- stream agent responses into the chat instead of waiting for the final transcript
+- show tool activity inline with readable summaries
+- stop an in-progress agent response from the send button
+- render agent messages as Markdown
+- keep the terminal-first harness model without exposing the full TUI when you want a calmer interface
+
+You can enable Streamline mode in Settings. The traditional terminal mode remains available for tools or workflows that work best as a raw TUI.
 
 ### Agent terminal
 
@@ -35,11 +49,15 @@ Supported detection targets currently include:
 - Claude Code: `claude`
 - Codex: `codex`
 - pi: `pi`
+- Droid: `droid`
+- Mistral Vibe: `vibe`
 - OpenCode: `opencode`
 - Aider: `aider`
 - Gemini CLI: `gemini`
 - Cursor Agent: `cursor-agent`
 - Amp: `amp`
+- Hermes: `hermes`
+- OpenClaw: `openclaw`
 
 ### Git changes workflow
 
@@ -47,7 +65,7 @@ Supported detection targets currently include:
 - stage and unstage files
 - discard changes with confirmation support
 - add files or patterns to `.gitignore`
-- review diffs when needed
+- review diffs with syntax-highlighted visible file content
 - write commit messages from the Changes panel
 - generate AI commit messages from uncommitted changes
 - commit all/staged changes
@@ -74,6 +92,7 @@ Centauri runs on your machine and talks to local tools:
 - repositories stay on your filesystem
 - Git operations use your system `git` executable
 - agent sessions run through your installed CLI tools
+- Streamline chat talks to the same local CLI harnesses rather than a hosted Centauri agent
 - GitHub access uses your existing `git`, SSH, HTTPS, or `gh` credentials
 - no hosted Centauri backend is required
 
@@ -81,7 +100,7 @@ Centauri runs on your machine and talks to local tools:
 
 - Node.js 20+
 - `git`
-- at least one supported coding-agent CLI if you want to use the agent terminal
+- at least one supported coding-agent CLI if you want to use the agent terminal or Streamline chat
 
 Optional:
 
@@ -171,9 +190,9 @@ To promote `dev`, open GitHub Actions, choose **Promote dev to main**, run the w
 promote dev
 ```
 
-By default the action runs `npm ci`, `npm run typecheck`, and `npm run build` before pushing `dev` to `main`.
+By default the action runs `npm ci`, `npm run typecheck`, and `npm run build` before promotion. If `main` has commits that are not yet in `dev`, the workflow first merges `main` into the promotion candidate, then fast-forwards both `dev` and `main` to the checked commit.
 
-## Debian release 
+## Debian release
 
 Install or upgrade a downloaded package with:
 
@@ -219,7 +238,7 @@ SSH and HTTPS remotes work too as long as your local Git environment can use the
 
 - multiple named agent sessions per repo
 - session persistence/history
-- tighter handoff between selected files/diffs and agent prompts
+- tighter handoff between selected files/diffs and Streamline prompts
 - richer post-agent review flows
 - commit/push presets
 - installer/package polish
