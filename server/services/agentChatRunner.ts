@@ -27,6 +27,11 @@ export type AgentChatStreamEvent =
   | { type: "done"; message: string };
 
 export function buildChatPrompt(history: AgentChatMessage[], prompt: string) {
+  const trimmedPrompt = prompt.trim();
+  if (trimmedPrompt.startsWith("/")) {
+    return trimmedPrompt;
+  }
+
   const turns = history
     .filter((message) => message.content.trim())
     .slice(-12)
@@ -37,7 +42,7 @@ export function buildChatPrompt(history: AgentChatMessage[], prompt: string) {
     "Respond naturally to the user's latest message while working in the current repository.",
     turns.length ? ["Conversation so far:", ...turns].join("\n\n") : "",
     "Latest user message:",
-    prompt,
+    trimmedPrompt,
   ].filter(Boolean).join("\n\n");
 }
 

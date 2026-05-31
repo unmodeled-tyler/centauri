@@ -497,6 +497,7 @@ export function StreamlineAgentView({
           disabled={!connectedTool}
           busy={responding}
           queuedCount={queuedCount}
+          slashCommands={connectedTool?.slashCommands ?? []}
           placeholder={
             responding
               ? "Queue a follow-up... (Shift+Enter for new line)"

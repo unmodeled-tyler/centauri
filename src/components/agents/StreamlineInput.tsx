@@ -1,5 +1,10 @@
 import { useState, useRef, useEffect, useCallback, memo } from "react";
 import { Send, Square } from "lucide-react";
+import type { AgentSlashCommand } from "../../services/api";
+
+function commandInsertText(command: AgentSlashCommand) {
+  return command.argumentHint ? `${command.command} ` : command.command;
+}
 
 const StreamlineInputComponent = memo(function StreamlineInput({
   onSend,
@@ -7,6 +12,7 @@ const StreamlineInputComponent = memo(function StreamlineInput({
   disabled,
   busy = false,
   queuedCount = 0,
+  slashCommands = [],
   placeholder = "Message your agent...",
 }: {
   onSend: (text: string) => void;
@@ -14,10 +20,20 @@ const StreamlineInputComponent = memo(function StreamlineInput({
   disabled: boolean;
   busy?: boolean;
   queuedCount?: number;
+  slashCommands?: AgentSlashCommand[];
   placeholder?: string;
 }) {
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const slashQuery = value.startsWith("/") && !value.includes("\n") ? value.trim().toLowerCase() : "";
+  const matchingSlashCommands = slashQuery
+    ? slashCommands
+      .filter((command) =>
+        command.command.toLowerCase().startsWith(slashQuery) ||
+        command.description.toLowerCase().includes(slashQuery.slice(1)),
+      )
+      .slice(0, 6)
+    : [];
 
   const adjustHeight = useCallback(() => {
     const el = inputRef.current;
@@ -38,6 +54,15 @@ const StreamlineInputComponent = memo(function StreamlineInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Tab" && matchingSlashCommands.length > 0) {
+      e.preventDefault();
+      const command = matchingSlashCommands[0];
+      if (!command) return;
+      setValue(commandInsertText(command));
+      requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
@@ -58,6 +83,34 @@ const StreamlineInputComponent = memo(function StreamlineInput({
               Stop
             </button>
           )}
+        </div>
+      )}
+      {matchingSlashCommands.length > 0 && (
+        <div className="mb-2 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl shadow-black/30">
+          <div className="border-b border-zinc-800/70 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+            Native slash commands
+          </div>
+          {matchingSlashCommands.map((command) => (
+            <button
+              key={command.command}
+              type="button"
+              onClick={() => {
+                setValue(commandInsertText(command));
+                requestAnimationFrame(() => inputRef.current?.focus());
+              }}
+              className="flex w-full min-w-0 items-start gap-3 px-3 py-2 text-left transition hover:bg-zinc-900"
+            >
+              <span className="mt-0.5 min-w-[76px] font-mono text-xs text-emerald-300">
+                {command.command}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs text-zinc-300">{command.description}</span>
+                {command.argumentHint && (
+                  <span className="mt-0.5 block font-mono text-[11px] text-zinc-600">{command.argumentHint}</span>
+                )}
+              </span>
+            </button>
+          ))}
         </div>
       )}
       <div className="flex items-end gap-2">

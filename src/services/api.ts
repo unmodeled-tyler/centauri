@@ -404,6 +404,7 @@ export interface AgentTool {
     chat: boolean;
   };
   launchOptions: AgentLaunchOption[];
+  slashCommands: AgentSlashCommand[];
   available: boolean;
   path?: string;
 }
@@ -413,6 +414,13 @@ export interface AgentLaunchOption {
   label: string;
   terminalArg: string;
   chatArgs: string[];
+}
+
+export interface AgentSlashCommand {
+  command: string;
+  description: string;
+  argumentHint?: string;
+  source: "native" | "centauri";
 }
 
 export function getAgentTools() {

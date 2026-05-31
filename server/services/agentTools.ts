@@ -10,6 +10,13 @@ export interface AgentLaunchOption {
   chatArgs: string[];
 }
 
+export interface AgentSlashCommand {
+  command: string;
+  description: string;
+  argumentHint?: string;
+  source: "native" | "centauri";
+}
+
 export interface AgentTool {
   id: string;
   label: string;
@@ -20,12 +27,76 @@ export interface AgentTool {
     chat: boolean;
   };
   launchOptions: AgentLaunchOption[];
+  slashCommands: AgentSlashCommand[];
 }
 
 export interface DetectedAgentTool extends AgentTool {
   available: boolean;
   path?: string;
 }
+
+const GENERIC_SLASH_COMMANDS: AgentSlashCommand[] = [
+  {
+    command: "/help",
+    description: "Ask the native CLI harness for its in-session command help.",
+    source: "native",
+  },
+];
+
+const CODEX_SLASH_COMMANDS: AgentSlashCommand[] = [
+  ...GENERIC_SLASH_COMMANDS,
+  {
+    command: "/init",
+    description: "Ask Codex to inspect the repo and create/update project instructions.",
+    source: "native",
+  },
+  {
+    command: "/model",
+    description: "Ask Codex to show or change the active model.",
+    argumentHint: "<model>",
+    source: "native",
+  },
+  {
+    command: "/status",
+    description: "Ask Codex for current session, config, and environment status.",
+    source: "native",
+  },
+  {
+    command: "/compact",
+    description: "Ask Codex to compact the conversation context.",
+    source: "native",
+  },
+  {
+    command: "/review",
+    description: "Ask Codex to review the current working tree.",
+    source: "native",
+  },
+];
+
+const CLAUDE_SLASH_COMMANDS: AgentSlashCommand[] = [
+  ...GENERIC_SLASH_COMMANDS,
+  {
+    command: "/init",
+    description: "Ask Claude Code to inspect the repo and create/update project memory.",
+    source: "native",
+  },
+  {
+    command: "/model",
+    description: "Ask Claude Code to show or change the active model.",
+    argumentHint: "<model>",
+    source: "native",
+  },
+  {
+    command: "/status",
+    description: "Ask Claude Code for current session, config, and environment status.",
+    source: "native",
+  },
+  {
+    command: "/compact",
+    description: "Ask Claude Code to compact the conversation context.",
+    source: "native",
+  },
+];
 
 const AGENT_TOOLS: AgentTool[] = [
   {
@@ -34,6 +105,7 @@ const AGENT_TOOLS: AgentTool[] = [
     command: "claude",
     description: "Anthropic's Claude coding CLI",
     capabilities: { terminal: true, chat: true },
+    slashCommands: CLAUDE_SLASH_COMMANDS,
     launchOptions: [
       {
         id: "claude-skip-permissions",
@@ -49,6 +121,7 @@ const AGENT_TOOLS: AgentTool[] = [
     command: "codex",
     description: "OpenAI Codex CLI",
     capabilities: { terminal: true, chat: true },
+    slashCommands: CODEX_SLASH_COMMANDS,
     launchOptions: [
       {
         id: "codex-yolo",
@@ -58,16 +131,16 @@ const AGENT_TOOLS: AgentTool[] = [
       },
     ],
   },
-  { id: "pi", label: "pi", command: "pi", description: "pi coding agent", capabilities: { terminal: true, chat: true }, launchOptions: [] },
-  { id: "opencode", label: "OpenCode", command: "opencode", description: "OpenCode terminal coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [] },
-  { id: "aider", label: "Aider", command: "aider", description: "Aider pair-programming CLI", capabilities: { terminal: true, chat: false }, launchOptions: [] },
-  { id: "gemini", label: "Gemini CLI", command: "gemini", description: "Google Gemini CLI", capabilities: { terminal: true, chat: false }, launchOptions: [] },
-  { id: "cursor-agent", label: "Cursor Agent", command: "cursor-agent", description: "Cursor's command-line coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [] },
-  { id: "amp", label: "Amp", command: "amp", description: "Sourcegraph Amp coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [] },
-  { id: "droid", label: "Droid", command: "droid", description: "Factory Droid coding agent", capabilities: { terminal: true, chat: true }, launchOptions: [] },
-  { id: "vibe", label: "Mistral Vibe", command: "vibe", description: "Mistral Vibe coding agent", capabilities: { terminal: true, chat: true }, launchOptions: [] },
-  { id: "hermes", label: "Hermes", command: "hermes", description: "Hermes coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [] },
-  { id: "openclaw", label: "OpenClaw", command: "openclaw", description: "OpenClaw coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [] },
+  { id: "pi", label: "pi", command: "pi", description: "pi coding agent", capabilities: { terminal: true, chat: true }, launchOptions: [], slashCommands: GENERIC_SLASH_COMMANDS },
+  { id: "opencode", label: "OpenCode", command: "opencode", description: "OpenCode terminal coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [], slashCommands: GENERIC_SLASH_COMMANDS },
+  { id: "aider", label: "Aider", command: "aider", description: "Aider pair-programming CLI", capabilities: { terminal: true, chat: false }, launchOptions: [], slashCommands: GENERIC_SLASH_COMMANDS },
+  { id: "gemini", label: "Gemini CLI", command: "gemini", description: "Google Gemini CLI", capabilities: { terminal: true, chat: false }, launchOptions: [], slashCommands: GENERIC_SLASH_COMMANDS },
+  { id: "cursor-agent", label: "Cursor Agent", command: "cursor-agent", description: "Cursor's command-line coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [], slashCommands: GENERIC_SLASH_COMMANDS },
+  { id: "amp", label: "Amp", command: "amp", description: "Sourcegraph Amp coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [], slashCommands: GENERIC_SLASH_COMMANDS },
+  { id: "droid", label: "Droid", command: "droid", description: "Factory Droid coding agent", capabilities: { terminal: true, chat: true }, launchOptions: [], slashCommands: GENERIC_SLASH_COMMANDS },
+  { id: "vibe", label: "Mistral Vibe", command: "vibe", description: "Mistral Vibe coding agent", capabilities: { terminal: true, chat: true }, launchOptions: [], slashCommands: GENERIC_SLASH_COMMANDS },
+  { id: "hermes", label: "Hermes", command: "hermes", description: "Hermes coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [], slashCommands: GENERIC_SLASH_COMMANDS },
+  { id: "openclaw", label: "OpenClaw", command: "openclaw", description: "OpenClaw coding agent", capabilities: { terminal: true, chat: false }, launchOptions: [], slashCommands: GENERIC_SLASH_COMMANDS },
 ];
 
 export function resolveAgentTool(id: string): AgentTool | undefined {
