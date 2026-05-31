@@ -34,6 +34,23 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Configure Git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Prepare promotion commit
+        run: |
+          git fetch origin main:refs/remotes/origin/main dev:refs/remotes/origin/dev
+          git checkout -B dev origin/dev
+
+          if git merge-base --is-ancestor origin/main HEAD; then
+            echo "origin/main is already included in dev."
+          else
+            echo "origin/main contains commits not present in dev; merging before promotion."
+            git merge --no-edit origin/main
+          fi
+
       - name: Setup Node
         if: github.event.inputs.run_checks == 'true'
         uses: actions/setup-node@v4
@@ -53,14 +70,9 @@ jobs:
         if: github.event.inputs.run_checks == 'true'
         run: npm run build
 
-      - name: Configure Git author
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
       - name: Promote dev HEAD to main
         run: |
-          git fetch origin main dev
+          git push origin HEAD:dev
           git push origin HEAD:main
 
       - name: Summary
