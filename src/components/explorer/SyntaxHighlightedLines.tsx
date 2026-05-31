@@ -71,7 +71,14 @@ export function HighlightedTokens({
     <>
       {tokens.map((token, tokenIndex) => {
         const tokenProps = getTokenProps({ token });
-        return <span key={tokenIndex} {...tokenProps} />;
+        return (
+          <span
+            key={tokenIndex}
+            {...tokenProps}
+            className={`syntax-token ${tokenProps.className}`}
+            style={undefined}
+          />
+        );
       })}
     </>
   );

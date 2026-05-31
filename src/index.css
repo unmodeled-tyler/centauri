@@ -26,3 +26,67 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #52525b;
 }
+
+.syntax-token {
+  color: #d4d4d8;
+}
+
+.syntax-token.comment,
+.syntax-token.prolog,
+.syntax-token.doctype,
+.syntax-token.cdata {
+  color: #71717a;
+  font-style: italic;
+}
+
+.syntax-token.keyword,
+.syntax-token.atrule {
+  color: #c084fc;
+}
+
+.syntax-token.string,
+.syntax-token.char,
+.syntax-token.attr-value,
+.syntax-token.regex,
+.syntax-token.variable {
+  color: #86efac;
+}
+
+.syntax-token.function,
+.syntax-token.method,
+.syntax-token.class-name {
+  color: #67e8f9;
+}
+
+.syntax-token.number,
+.syntax-token.boolean,
+.syntax-token.constant,
+.syntax-token.symbol,
+.syntax-token.deleted {
+  color: #fbbf24;
+}
+
+.syntax-token.operator,
+.syntax-token.punctuation,
+.syntax-token.entity,
+.syntax-token.url {
+  color: #a1a1aa;
+}
+
+.syntax-token.property,
+.syntax-token.tag,
+.syntax-token.selector,
+.syntax-token.attr-name,
+.syntax-token.builtin,
+.syntax-token.inserted {
+  color: #93c5fd;
+}
+
+.syntax-token.important,
+.syntax-token.bold {
+  font-weight: 700;
+}
+
+.syntax-token.italic {
+  font-style: italic;
+}

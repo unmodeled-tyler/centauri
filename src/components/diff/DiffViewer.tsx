@@ -1,9 +1,17 @@
 import { useEffect, useState, useCallback } from "react";
+import type { ReactNode } from "react";
 import { useRepoStore } from "../../stores/repoStore";
 import type { FileDiff, DiffLine } from "../../types/git";
 import { applyHunk, getDiff } from "../../services/api";
+import { HighlightedTokens, SyntaxHighlightedLines } from "../explorer/SyntaxHighlightedLines";
 
-function DiffLineView({ line }: { line: DiffLine }) {
+function DiffLineView({
+  line,
+  content,
+}: {
+  line: DiffLine;
+  content?: ReactNode;
+}) {
   const bg =
     line.type === "add"
       ? "bg-emerald-500/[0.06]"
@@ -28,7 +36,7 @@ function DiffLineView({ line }: { line: DiffLine }) {
       </span>
       <span className={`w-4 flex-shrink-0 select-none ${text}`}>{prefix}</span>
       <pre className={`flex-1 whitespace-pre-wrap break-all ${text}`}>
-        {line.content}
+        {content ?? line.content}
       </pre>
     </div>
   );
@@ -120,9 +128,15 @@ function DiffHunkView({
               <HunkActions diff={diff} hunk={hunk} onAction={onAction} />
             </div>
           </div>
-          {hunk.lines.map((line, j) => (
-            <DiffLineView key={j} line={line} />
-          ))}
+          <SyntaxHighlightedLines items={hunk.lines} filePath={diff.path} getLineContent={(line) => line.content}>
+            {({ item: line, index: j, tokens, getTokenProps }) => (
+              <DiffLineView
+                key={j}
+                line={line}
+                content={<HighlightedTokens tokens={tokens} getTokenProps={getTokenProps} />}
+              />
+            )}
+          </SyntaxHighlightedLines>
         </div>
       ))}
     </div>
