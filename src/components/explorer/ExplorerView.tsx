@@ -535,6 +535,18 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
       {/* ── Header with mode tabs ── */}
       <div className="flex-shrink-0 border-b border-zinc-800/60">
         <div className="flex items-center gap-1 px-3 py-1.5">
+          <button
+            onClick={() => setLeftPanelCollapsed((collapsed) => !collapsed)}
+            className="inline-flex h-7 w-7 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+            title={leftPanelCollapsed ? "Show explorer panel" : "Hide explorer panel"}
+            aria-label={leftPanelCollapsed ? "Show explorer panel" : "Hide explorer panel"}
+          >
+            {leftPanelCollapsed ? (
+              <PanelLeftOpen className="h-3.5 w-3.5" />
+            ) : (
+              <PanelLeftClose className="h-3.5 w-3.5" />
+            )}
+          </button>
           {([
             ["browse", "Browse"],
             ["search", "Code Search"],
@@ -555,18 +567,6 @@ export function ExplorerView({ initialFilePath, onConsumed }: { initialFilePath?
               {label}
             </button>
           ))}
-          <button
-            onClick={() => setLeftPanelCollapsed((collapsed) => !collapsed)}
-            className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-            title={leftPanelCollapsed ? "Show explorer panel" : "Hide explorer panel"}
-            aria-label={leftPanelCollapsed ? "Show explorer panel" : "Hide explorer panel"}
-          >
-            {leftPanelCollapsed ? (
-              <PanelLeftOpen className="h-3.5 w-3.5" />
-            ) : (
-              <PanelLeftClose className="h-3.5 w-3.5" />
-            )}
-          </button>
         </div>
       </div>
 
