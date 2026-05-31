@@ -1,8 +1,12 @@
 import { execFile } from "child_process";
+import { existsSync } from "fs";
+import { delimiter, join } from "path";
+import { homedir } from "os";
 import { promisify } from "util";
 import { discoverSkillSlashCommands } from "./agentSkills.js";
 
 const execFileAsync = promisify(execFile);
+const COMMAND_LOOKUP_TIMEOUT_MS = 2_000;
 
 export interface AgentLaunchOption {
   id: string;
@@ -187,14 +191,51 @@ export function streamingChatArgsForTool(tool: AgentTool, requested: string[]) {
   return chatArgsForTool(tool, requested);
 }
 
-export async function commandPath(command: string): Promise<string | undefined> {
-  const lookup = process.platform === "win32" ? "where" : "which";
+function candidatePaths(command: string) {
+  const home = homedir();
+  const pathDirs = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+  const fallbackDirs = [
+    join(home, ".local", "bin"),
+    join(home, ".npm-global", "bin"),
+    join(home, ".bun", "bin"),
+    join(home, ".cargo", "bin"),
+    join(home, ".grok", "bin"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/Applications/Codex.app/Contents/Resources",
+  ];
+
+  return [...new Set([...pathDirs, ...fallbackDirs])].map((dir) => join(dir, command));
+}
+
+async function commandPathFromShell(command: string) {
+  const shell = process.env.SHELL || "/bin/zsh";
   try {
-    const { stdout } = await execFileAsync(lookup, [command], { timeout: 2_000 });
+    const { stdout } = await execFileAsync(
+      shell,
+      ["-lc", "command -v -- \"$1\"", "centauri-detect-agent", command],
+      { timeout: COMMAND_LOOKUP_TIMEOUT_MS },
+    );
     return stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
   } catch {
     return undefined;
   }
+}
+
+export async function commandPath(command: string): Promise<string | undefined> {
+  const lookup = process.platform === "win32" ? "where" : "which";
+  try {
+    const { stdout } = await execFileAsync(lookup, [command], { timeout: COMMAND_LOOKUP_TIMEOUT_MS });
+    const directPath = stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+    if (directPath) return directPath;
+  } catch {
+    // Fall through to shell and known install-location lookups.
+  }
+
+  const shellPath = await commandPathFromShell(command);
+  if (shellPath) return shellPath;
+
+  return candidatePaths(command).find((path) => existsSync(path));
 }
 
 export async function detectAgentTools(): Promise<DetectedAgentTool[]> {
