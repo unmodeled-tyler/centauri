@@ -1,5 +1,6 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { discoverSkillSlashCommands } from "./agentSkills.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -12,9 +13,10 @@ export interface AgentLaunchOption {
 
 export interface AgentSlashCommand {
   command: string;
+  insertText?: string;
   description: string;
   argumentHint?: string;
-  source: "native" | "centauri";
+  source: "native" | "centauri" | "skill";
 }
 
 export interface AgentTool {
@@ -199,7 +201,11 @@ export async function detectAgentTools(): Promise<DetectedAgentTool[]> {
   return Promise.all(
     AGENT_TOOLS.map(async (tool) => {
       const path = await commandPath(tool.command);
-      return { ...tool, available: Boolean(path), ...(path ? { path } : {}) };
+      const slashCommands = [
+        ...tool.slashCommands,
+        ...discoverSkillSlashCommands(tool.id),
+      ];
+      return { ...tool, slashCommands, available: Boolean(path), ...(path ? { path } : {}) };
     }),
   );
 }

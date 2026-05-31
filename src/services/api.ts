@@ -418,9 +418,10 @@ export interface AgentLaunchOption {
 
 export interface AgentSlashCommand {
   command: string;
+  insertText?: string;
   description: string;
   argumentHint?: string;
-  source: "native" | "centauri";
+  source: "native" | "centauri" | "skill";
 }
 
 export function getAgentTools() {

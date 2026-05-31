@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 import type { AgentTool } from "./agentTools.js";
 import { chatArgsForTool, streamingChatArgsForTool } from "./agentTools.js";
+import { formatSkillSlashPrompt } from "./agentSkills.js";
 
 const MAX_AGENT_CHAT_OUTPUT_CHARS = 120000;
 const AGENT_CHAT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -28,6 +29,11 @@ export type AgentChatStreamEvent =
 
 export function buildChatPrompt(history: AgentChatMessage[], prompt: string) {
   const trimmedPrompt = prompt.trim();
+  const skillPrompt = formatSkillSlashPrompt(trimmedPrompt);
+  if (skillPrompt !== trimmedPrompt) {
+    return skillPrompt;
+  }
+
   if (trimmedPrompt.startsWith("/")) {
     return trimmedPrompt;
   }

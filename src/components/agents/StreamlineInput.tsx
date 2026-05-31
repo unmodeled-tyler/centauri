@@ -3,6 +3,7 @@ import { Send, Square } from "lucide-react";
 import type { AgentSlashCommand } from "../../services/api";
 
 function commandInsertText(command: AgentSlashCommand) {
+  if (command.insertText) return command.insertText;
   return command.argumentHint ? `${command.command} ` : command.command;
 }
 
@@ -32,7 +33,7 @@ const StreamlineInputComponent = memo(function StreamlineInput({
         command.command.toLowerCase().startsWith(slashQuery) ||
         command.description.toLowerCase().includes(slashQuery.slice(1)),
       )
-      .slice(0, 6)
+      .slice(0, 8)
     : [];
 
   const adjustHeight = useCallback(() => {
@@ -88,7 +89,7 @@ const StreamlineInputComponent = memo(function StreamlineInput({
       {matchingSlashCommands.length > 0 && (
         <div className="mb-2 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl shadow-black/30">
           <div className="border-b border-zinc-800/70 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-            Native slash commands
+            Slash commands and skills
           </div>
           {matchingSlashCommands.map((command) => (
             <button
@@ -104,7 +105,14 @@ const StreamlineInputComponent = memo(function StreamlineInput({
                 {command.command}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs text-zinc-300">{command.description}</span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="block truncate text-xs text-zinc-300">{command.description}</span>
+                  {command.source === "skill" && (
+                    <span className="flex-shrink-0 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-cyan-200">
+                      Skill
+                    </span>
+                  )}
+                </span>
                 {command.argumentHint && (
                   <span className="mt-0.5 block font-mono text-[11px] text-zinc-600">{command.argumentHint}</span>
                 )}
