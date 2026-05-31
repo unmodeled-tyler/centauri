@@ -156,9 +156,14 @@ function nestedRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
+function isToolActivityName(value: string) {
+  const normalized = value.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
+  return /(^|[._:\-\s])(tool|function|command|exec|bash|patch|edit|read|write|grep|find|ls)($|[._:\-\s])/i.test(normalized);
+}
+
 function findToolPayload(event: Record<string, unknown>): Record<string, unknown> | null {
   const type = eventString(event.type || event.kind || event.event);
-  if (/tool|function|command|exec|bash|patch|edit|read|write|grep|find|ls/i.test(type)) return event;
+  if (isToolActivityName(type)) return event;
 
   for (const key of ["item", "message", "tool_call", "function_call", "call"]) {
     const nested = nestedRecord(event[key]);
@@ -179,7 +184,7 @@ function findToolPayload(event: Record<string, unknown>): Record<string, unknown
 }
 
 function toolInput(event: Record<string, unknown>, item: Record<string, unknown> | null, payload: Record<string, unknown> | null) {
-  return (
+  const structuredInput = (
     payload?.input ??
     payload?.arguments ??
     payload?.args ??
@@ -194,6 +199,16 @@ function toolInput(event: Record<string, unknown>, item: Record<string, unknown>
     item?.arguments ??
     item?.args ??
     item?.parameters
+  );
+  if (structuredInput) return structuredInput;
+
+  return directToolInput(
+    payload,
+    event,
+    item,
+    nestedRecord(event.payload),
+    nestedRecord(event.data),
+    nestedRecord(event.details),
   );
 }
 
@@ -235,6 +250,38 @@ function inputObject(value: unknown): Record<string, unknown> {
   }
 }
 
+function directToolInput(...records: Array<Record<string, unknown> | null>) {
+  const input: Record<string, unknown> = {};
+  const fields = [
+    "command",
+    "cmd",
+    "script",
+    "cwd",
+    "working_directory",
+    "workingDirectory",
+    "path",
+    "file_path",
+    "filePath",
+    "filename",
+    "file",
+    "directory_path",
+    "directoryPath",
+    "pattern",
+    "query",
+    "regex",
+  ];
+
+  for (const record of records) {
+    if (!record) continue;
+    for (const field of fields) {
+      if (input[field] != null || record[field] == null) continue;
+      input[field] = record[field];
+    }
+  }
+
+  return Object.keys(input).length > 0 ? input : undefined;
+}
+
 function shorten(value: string, max = 96) {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length > max ? `${normalized.slice(0, max - 1)}...` : normalized;
@@ -273,14 +320,60 @@ function sanitizeToolDetail(value: unknown, key = ""): unknown {
   );
 }
 
+function unquoteShellArgument(value: string) {
+  const trimmed = value.trim();
+  if (trimmed.length < 2) return trimmed;
+  const quote = trimmed[0];
+  if ((quote !== "'" && quote !== "\"") || trimmed[trimmed.length - 1] !== quote) return trimmed;
+  return trimmed.slice(1, -1);
+}
+
+function displayCommand(command: string) {
+  const trimmed = command.trim();
+  const shellMatch = trimmed.match(/^(?:\/[^\s]+\/)?(?:zsh|bash|sh)\s+-lc\s+(.+)$/);
+  if (shellMatch?.[1]) return unquoteShellArgument(shellMatch[1]);
+  return trimmed;
+}
+
+function commandTarget(command: string) {
+  const trimmed = command.trim();
+  const listMatch = trimmed.match(/^ls(?:\s+(?:-[A-Za-z0-9]+\s+)*)?(.+)?$/);
+  if (listMatch) return listMatch[1]?.trim() || ".";
+
+  const readMatch = trimmed.match(/^(?:cat|head|tail|nl|wc|sed)(?:\s+[^|;&]*)?\s+([^\s|;&]+)\s*$/);
+  if (readMatch?.[1]) return readMatch[1].trim();
+
+  const searchMatch = trimmed.match(/^(?:rg|grep)(?:\s+[^|;&]*)?\s+([^\s|;&]+)\s*$/);
+  if (searchMatch?.[1]) return searchMatch[1].trim();
+
+  return "";
+}
+
 function summarizeToolCall(name: string, input: unknown) {
   const lower = name.toLowerCase();
   const args = inputObject(input);
-  const command = eventString(args.command || args.cmd || args.script);
-  const path = eventString(args.path || args.file_path || args.filePath || args.filename || args.file || args.directory_path || args.directoryPath);
+  const rawCommand = eventString(args.command || args.cmd || args.script);
+  const command = rawCommand ? displayCommand(rawCommand) : "";
+  const commandPath = command ? commandTarget(command) : "";
+  const path = eventString(
+    args.path ||
+    args.file_path ||
+    args.filePath ||
+    args.filename ||
+    args.file ||
+    args.directory_path ||
+    args.directoryPath ||
+    commandPath ||
+    args.cwd ||
+    args.working_directory ||
+    args.workingDirectory,
+  );
   const displayPath = path ? displayPathTarget(path) : "";
   const pattern = eventString(args.pattern || args.query || args.regex);
 
+  if (/command_execution/.test(lower) && /^ls(?:\s|$)/.test(command)) return `List ${displayPath || "."}`;
+  if (/command_execution/.test(lower) && /^(?:cat|head|tail|nl|wc|sed)(?:\s|$)/.test(command) && displayPath) return `Read ${displayPath}`;
+  if (/command_execution/.test(lower) && /^(?:rg|grep)(?:\s|$)/.test(command) && pattern) return `Search ${shorten(pattern, 64)}`;
   if (/bash|shell|exec|command|terminal/.test(lower) && command) return `Run ${shorten(command)}`;
   if (/read|open|view/.test(lower) && displayPath) return `Read ${displayPath}`;
   if (/write|create/.test(lower) && displayPath) return `Write ${displayPath}`;
@@ -345,7 +438,7 @@ function extractActivity(event: Record<string, unknown>): AgentChatStreamEvent |
   const detailSource = input ?? event.value ?? payload?.value ?? item?.value;
   const detail = shorten(compactJson(sanitizeToolDetail(detailSource)), 180);
 
-  if (/tool|function|command|exec|bash|patch|edit|read|write|grep|find|ls/i.test([type, subtype, itemType, payloadType].join(" "))) {
+  if ([type, subtype, itemType, payloadType].some(isToolActivityName)) {
     return {
       type: "activity",
       title: label || "Tool activity",
@@ -366,7 +459,7 @@ function normalizeJsonEvent(value: unknown): AgentChatStreamEvent | null {
 
   if (/result|done|completed|complete|final/i.test(type)) {
     const message = eventString(event.result || event.message || event.output || event.text || event.content);
-    return message ? { type: "done", message } : null;
+    if (message) return { type: "done", message };
   }
 
   const text = extractTextDelta(event);
