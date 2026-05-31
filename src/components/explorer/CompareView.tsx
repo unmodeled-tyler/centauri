@@ -1,5 +1,6 @@
 import { File, Loader2 } from "lucide-react";
 import type { FileDiff } from "../../types/git";
+import { HighlightedTokens, SyntaxHighlightedLines } from "./SyntaxHighlightedLines";
 
 export function CompareView({
   diffs,
@@ -51,20 +52,22 @@ export function CompareView({
                 <div className="px-3 py-0.5 text-zinc-500 bg-zinc-900/30 text-[10px]">
                   {hunk.header}
                 </div>
-                {hunk.lines.map((line, li) => (
-                  <div
-                    key={li}
-                    className={`px-3 py-0 whitespace-pre ${
-                      line.type === "add"
-                        ? "bg-emerald-500/10 text-emerald-300"
-                        : line.type === "delete"
-                          ? "bg-red-500/10 text-red-300"
-                          : "text-zinc-400"
-                    }`}
-                  >
-                    {line.content}
-                  </div>
-                ))}
+                <SyntaxHighlightedLines items={hunk.lines} filePath={diff.path} getLineContent={(line) => line.content}>
+                  {({ item: line, index: li, tokens, getTokenProps }) => (
+                    <div
+                      key={li}
+                      className={`px-3 py-0 whitespace-pre ${
+                        line.type === "add"
+                          ? "bg-emerald-500/10 text-emerald-300"
+                          : line.type === "delete"
+                            ? "bg-red-500/10 text-red-300"
+                            : "text-zinc-400"
+                      }`}
+                    >
+                      <HighlightedTokens tokens={tokens} getTokenProps={getTokenProps} />
+                    </div>
+                  )}
+                </SyntaxHighlightedLines>
               </div>
             ))}
           </div>
